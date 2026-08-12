@@ -1,0 +1,11 @@
+.DS_Store
+Thumbs.db
+*.log
+# Never commit filled-in configs / real installers
+config.local.*
+*.msi
+*.dmg
+*.deb
+*.rpm
+*.pkg
+inventory.ini

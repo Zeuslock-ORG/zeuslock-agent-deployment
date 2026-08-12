@@ -1,0 +1,70 @@
+---
+# ZeusLock agent — Ansible deployment for Debian/Ubuntu desktops.
+#
+#   ansible-playbook -i inventory.ini zeuslock-agent.yml --ask-become-pass
+#
+# inventory.ini example:
+#   [zeus_endpoints]
+#   ws01.corp.local
+#   ws02.corp.local
+#
+# Keep zeus_license_key in an Ansible Vault variable in production.
+
+- name: Deploy ZeusLock DLP agent
+  hosts: zeus_endpoints
+  become: true
+
+  vars:
+    zeus_server_url: "YOUR_SERVER_URL"                 # https://api.zeuslock.ai
+    zeus_license_key: "YOUR_LICENSE_KEY"               # zl_...
+    zeus_deb_src: "./zeus-desktop-agent_amd64.deb"     # path on the control node
+    zeus_exec: "zeus-ai-data-protection"               # launcher command (adjust if the .deb differs)
+
+  tasks:
+    - name: Copy the .deb to the target
+      ansible.builtin.copy:
+        src: "{{ zeus_deb_src }}"
+        dest: /tmp/zeuslock-agent.deb
+        mode: "0644"
+
+    - name: Install the agent package
+      ansible.builtin.apt:
+        deb: /tmp/zeuslock-agent.deb
+        state: present
+      # 'apt deb:' resolves dependencies from the configured repos.
+
+    - name: Ensure managed config directory exists
+      ansible.builtin.file:
+        path: /etc/zeuslock
+        state: directory
+        mode: "0755"
+
+    - name: Write managed config (/etc/zeuslock/agent.conf)
+      ansible.builtin.copy:
+        dest: /etc/zeuslock/agent.conf
+        mode: "0644"
+        content: |
+          # ZeusLock agent — managed configuration (KEY=VALUE).
+          ServerUrl={{ zeus_server_url }}
+          LicenseKey={{ zeus_license_key }}
+          AgentEnabled=true
+          BlockingEnabled=true
+          NetworkMonitoring=true
+          FileMonitoring=true
+
+    - name: Add desktop autostart entry (starts the agent in each user's session)
+      ansible.builtin.copy:
+        dest: /etc/xdg/autostart/zeuslock-agent.desktop
+        mode: "0644"
+        content: |
+          [Desktop Entry]
+          Type=Application
+          Name=ZeusLock Agent
+          Exec={{ zeus_exec }}
+          X-GNOME-Autostart-enabled=true
+          NoDisplay=true
+
+    - name: Clean up the staged package
+      ansible.builtin.file:
+        path: /tmp/zeuslock-agent.deb
+        state: absent

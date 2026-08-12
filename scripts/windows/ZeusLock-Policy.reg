@@ -1,0 +1,23 @@
+Windows Registry Editor Version 5.00
+
+; ZeusLock agent — managed configuration (Windows registry policy scope).
+; Fill in YOUR_SERVER_URL and YOUR_LICENSE_KEY below, then either:
+;   * import on a reference machine:  reg import ZeusLock-Policy.reg
+;   * or replicate these values via a GPO Registry preference (recommended for
+;     fleets — see docs/01-windows-gpo.md, Method B.2).
+;
+; String values are REG_SZ ("..."); on/off toggles are REG_DWORD (1 = on, 0 = off).
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\ZeusLock]
+"ServerUrl"="YOUR_SERVER_URL"
+"LicenseKey"="YOUR_LICENSE_KEY"
+"AgentEnabled"=dword:00000001
+"BlockingEnabled"=dword:00000001
+"FileMonitoring"=dword:00000001
+"NetworkMonitoring"=dword:00000001
+"ClipboardMonitoring"=dword:00000001
+
+; Optional: guarantee the tray agent auto-starts machine-wide. Adjust the path if
+; you changed the install location.
+[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Run]
+"ZeusLock Agent"="\"C:\\Program Files\\Zeus - AI Data Protection\\Zeus - AI Data Protection.exe\""

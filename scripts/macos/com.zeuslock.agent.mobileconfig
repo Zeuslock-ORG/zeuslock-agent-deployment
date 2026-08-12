@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ZeusLock agent — macOS managed configuration profile.
+
+  Sets managed preferences for the domain `com.zeuslock.agent`, which the agent
+  reads as its highest-priority (managed) config scope. Upload this .mobileconfig
+  to your MDM as a Configuration Profile / Custom Settings and scope it to your Macs.
+
+  BEFORE UPLOADING: replace YOUR_SERVER_URL and YOUR_LICENSE_KEY below.
+  (The PayloadUUID/PayloadIdentifier values are placeholders — most MDMs regenerate
+  them on import; if yours doesn't, replace them with your own UUIDs.)
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>PayloadContent</key>
+  <array>
+    <dict>
+      <key>PayloadType</key>
+      <string>com.zeuslock.agent</string>
+      <key>PayloadIdentifier</key>
+      <string>com.zeuslock.agent.settings</string>
+      <key>PayloadUUID</key>
+      <string>0A1B2C3D-0001-4000-8000-000000000001</string>
+      <key>PayloadVersion</key>
+      <integer>1</integer>
+      <key>PayloadEnabled</key>
+      <true/>
+
+      <!-- ===== ZeusLock configuration keys ===== -->
+      <key>ServerUrl</key>
+      <string>YOUR_SERVER_URL</string>
+      <key>LicenseKey</key>
+      <string>YOUR_LICENSE_KEY</string>
+      <key>AgentEnabled</key>
+      <true/>
+      <key>BlockingEnabled</key>
+      <true/>
+      <key>NetworkMonitoring</key>
+      <true/>
+      <key>FileMonitoring</key>
+      <true/>
+    </dict>
+  </array>
+  <key>PayloadDisplayName</key>
+  <string>ZeusLock Agent Configuration</string>
+  <key>PayloadIdentifier</key>
+  <string>com.zeuslock.agent.profile</string>
+  <key>PayloadType</key>
+  <string>Configuration</string>
+  <key>PayloadUUID</key>
+  <string>0A1B2C3D-0000-4000-8000-000000000000</string>
+  <key>PayloadVersion</key>
+  <integer>1</integer>
+  <key>PayloadScope</key>
+  <string>System</string>
+  <key>PayloadOrganization</key>
+  <string>Your Organization</string>
+</dict>
+</plist>
