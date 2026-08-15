@@ -70,9 +70,9 @@ Where the agent looks for these values (summary — full detail in the
 
 | OS | Managed policy (recommended — GPO/MDM) | File fallback |
 |----|----------------------------------------|---------------|
-| Windows | Registry `HKLM\SOFTWARE\Policies\ZeusLock` | `C:\ProgramData\ZeusDLP\config.json` |
-| macOS | Managed profile domain `com.zeuslock.agent` | `/Library/Application Support/ZeusDLP/config.json` |
-| Linux | `/etc/zeuslock/agent.conf` | `/etc/zeus-dlp/config.json` |
+| Windows | Registry `HKLM\SOFTWARE\Policies\ZeusLock` | `C:\ProgramData\ZeusLockDLP\config.json` |
+| macOS | Managed profile domain `com.zeuslock.agent` | `/Library/Application Support/ZeusLockDLP/config.json` |
+| Linux | `/etc/zeuslock/agent.conf` | `/etc/zeuslock-dlp/config.json` |
 
 ---
 

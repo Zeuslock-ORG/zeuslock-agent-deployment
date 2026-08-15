@@ -24,8 +24,8 @@ An endpoint is protected only when **all four** pass. Run them on a target machi
 | macOS | `sudo defaults read /Library/Managed\ Preferences/com.zeuslock.agent` | `ServerUrl` + `LicenseKey` |
 | Linux | `sudo cat /etc/zeuslock/agent.conf` | `ServerUrl` + `LicenseKey` |
 
-(If you used the JSON fallback instead: Windows `C:\ProgramData\ZeusDLP\config.json`,
-macOS `/Library/Application Support/ZeusDLP/config.json`, Linux `/etc/zeus-dlp/config.json`.)
+(If you used the JSON fallback instead: Windows `C:\ProgramData\ZeusLockDLP\config.json`,
+macOS `/Library/Application Support/ZeusLockDLP/config.json`, Linux `/etc/zeuslock-dlp/config.json`.)
 
 ### 3. Running + inspection proxy up
 | OS | Command | Expect |
@@ -59,7 +59,7 @@ should appear under **Incidents** in your dashboard within a few seconds.
 | **Windows: agent missing after a GPO reboot** | The MSI is *per-user*; native "Assigned" computer install didn't apply it machine-wide | Use **Method A** (startup script `Install-ZeusAgent.ps1`), or add an `.mst` transform setting `ALLUSERS=1 MSIINSTALLPERUSER=""`. |
 | Agent active but **ChatGPT paste not intercepted** | System proxy not routed to the agent, or the agent's proxy CA isn't trusted | Restart the agent inside the user session; confirm the proxy is `LISTENING` on `9876`; ensure the inspection CA is trusted (MDM/GPO can pre-push it). |
 | **Endpoint doesn't appear under "Agents" in the dashboard** | Registration blocked — wrong/expired key, or can't reach the Server URL | Verify the key is valid and `https://<ServerUrl>` is reachable from the endpoint (firewall/proxy). Re-check `LicenseKey`. |
-| Re-pointed to a new org/key but **old org still shows** | Stale per-user store from the previous registration | Clear the per-user config so it re-registers: delete `zeus-config.json` / the store in the user's app-data dir (Windows: `%APPDATA%\Zeus DLP Agent\config.json`), then relaunch. |
+| Re-pointed to a new org/key but **old org still shows** | Stale per-user store from the previous registration | Clear the per-user config so it re-registers: delete `zeuslock-config.json` / the store in the user's app-data dir (Windows `%APPDATA%\ZeusLock DLP Agent\config.json`, macOS `~/Library/Application Support/ZeusLock DLP Agent/config.json`, Linux `~/.config/ZeusLock DLP Agent/config.json`; before 1.0.13 the folder was `Zeus DLP Agent`), then relaunch. |
 | **macOS: user gets permission prompts** | TCC / login-item / network approvals not pre-granted | Pre-approve via MDM (PPPC + Managed Login Items + Certificate payloads) — see [macOS guide §5](02-macos-mdm.md#5-approvals-the-agent-needs). |
 
 ---

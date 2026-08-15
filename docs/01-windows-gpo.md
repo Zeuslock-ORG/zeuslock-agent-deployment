@@ -235,6 +235,23 @@ folder is now `C:\Program Files\ZeusLock - AI Data Protection\` and the exe
 - `Get-Package -Name "*Zeus*"` and the `*Zeus*` process matchers keep working (they
   match the new name too).
 
+## Upgrading from 1.0.12 or earlier (paths were "ZeusDLP")
+
+Version 1.0.13 renamed the remaining paths and the autostart entry:
+
+| | 1.0.12 and earlier | 1.0.13+ |
+|---|---|---|
+| Admin config (JSON fallback) | `C:\ProgramData\ZeusDLP\config.json` | `C:\ProgramData\ZeusLockDLP\config.json` |
+| Per-user data | `%APPDATA%\Zeus DLP Agent\` | `%APPDATA%\ZeusLock DLP Agent\` |
+| `Run` value | `Zeus DLP Agent` | `ZeusLock DLP Agent` |
+
+Nothing to do for a managed deployment: the **policy key
+`HKLM\SOFTWARE\Policies\ZeusLock` is unchanged** (it is the source of truth here),
+the agent migrates its per-user directory on first launch, the installer replaces the
+old `Run` value with the new one, and the old JSON path is still read as a fallback.
+Only if you deployed the JSON fallback by hand: write it to the new path and delete
+the old file.
+
 ## Removing the agent
 
 ```powershell

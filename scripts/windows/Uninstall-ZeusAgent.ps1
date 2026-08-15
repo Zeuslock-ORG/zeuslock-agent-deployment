@@ -20,9 +20,12 @@ else      { Log "No ZeusLock package installed." }
 
 # Remove managed config + autostart
 Remove-Item "HKLM:\SOFTWARE\Policies\ZeusLock" -Recurse -Force -ErrorAction SilentlyContinue
-Remove-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" -Name "ZeusLock Agent" -Force -ErrorAction SilentlyContinue
+foreach ($runValue in @("ZeusLock DLP Agent", "ZeusLock Agent", "Zeus DLP Agent")) {
+    Remove-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" -Name $runValue -Force -ErrorAction SilentlyContinue
+}
+Remove-Item "C:\Program Files\ZeusLock - AI Data Protection\zeuslock-start.bat" -Force -ErrorAction SilentlyContinue
 
 # Remove the admin JSON fallback (if used)
-Remove-Item "C:\ProgramData\ZeusDLP\config.json" -Force -ErrorAction SilentlyContinue
+Remove-Item "C:\ProgramData\ZeusLockDLP\config.json" -Force -ErrorAction SilentlyContinue
 
 Log "=== ZeusLock agent uninstall complete ==="

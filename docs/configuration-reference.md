@@ -18,11 +18,19 @@ On startup (and every ~60 s), the agent loads configuration from these sources,
    - Linux: `/etc/zeuslock/agent.conf`
 2. **Admin config file** (system-wide JSON) — used when the managed scope did not
    supply a license key:
-   - Windows: `C:\ProgramData\ZeusDLP\config.json`
-   - macOS: `/Library/Application Support/ZeusDLP/config.json`
-   - Linux: `/etc/zeus-dlp/config.json`
+   - Windows: `C:\ProgramData\ZeusLockDLP\config.json`
+   - macOS: `/Library/Application Support/ZeusLockDLP/config.json`
+   - Linux: `/etc/zeuslock-dlp/config.json`
 3. **Per-user config file** (a tester without admin rights):
-   `zeus-config.json` in the agent's per-user data directory.
+   `zeuslock-config.json` in the agent's per-user data directory
+   (Windows `%APPDATA%\ZeusLock DLP Agent\`, macOS
+   `~/Library/Application Support/ZeusLock DLP Agent/`, Linux
+   `~/.config/ZeusLock DLP Agent/`).
+
+> **Renamed in 1.0.13.** Before 1.0.13 these were `ZeusDLP` / `zeus-dlp` /
+> `Zeus DLP Agent` / `zeus-config.json`. The old locations are **still read** as a
+> fallback and the per-user directory is migrated automatically on first launch, so
+> upgrades keep their configuration — but write new deployments to the paths above.
 
 A key set in a higher source wins. In practice you use **either** the managed
 policy (recommended for fleets) **or** the admin JSON file (simplest for a pilot /

@@ -7,7 +7,7 @@ your MDM. The same two ingredients as every platform: **install the app**, then
 
 > ℹ️ The **configuration mechanism** below (managed-preferences domain
 > `com.zeuslock.agent`, and the JSON fallback at
-> `/Library/Application Support/ZeusDLP/config.json`) is read directly by the
+> `/Library/Application Support/ZeusLockDLP/config.json`) is read directly by the
 > agent and is exact. The **install/MDM upload** steps are standard macOS practice
 > — run a **pilot on one Mac** (the [Manual section](#manual-install-single-mac))
 > before a fleet push.
@@ -83,7 +83,7 @@ The profile lands at `/Library/Managed Preferences/com.zeuslock.agent.plist`, wh
 is the agent's managed scope (highest priority).
 
 > **Prefer a plain file instead of a profile?** You can drop the JSON fallback at
-> `/Library/Application Support/ZeusDLP/config.json` (template:
+> `/Library/Application Support/ZeusLockDLP/config.json` (template:
 > [scripts/macos/config.json](../scripts/macos/config.json)) via an MDM script or
 > Composer. The managed profile is preferred for fleets because it self-heals and
 > is tamper-resistant. See the [configuration reference](configuration-reference.md).
@@ -126,7 +126,7 @@ pgrep -fl "ZeusLock - AI Data Protection"
 lsof -iTCP:9876 -sTCP:LISTEN
 
 # 4. (fallback config, if you used it)
-cat "/Library/Application Support/ZeusDLP/config.json"
+cat "/Library/Application Support/ZeusLockDLP/config.json"
 ```
 
 Then the **live test**: as a normal user, open Chrome/Safari → **chatgpt.com** →
@@ -148,7 +148,7 @@ sudo bash install-zeus-agent.sh /path/to/ZeusLock.dmg
 ```
 
 It mounts the DMG, copies the app to `/Applications`, and writes the config to
-`/Library/Application Support/ZeusDLP/config.json`. Then launch the app from
+`/Library/Application Support/ZeusLockDLP/config.json`. Then launch the app from
 Applications and complete any first-run approval prompts.
 
 ---
@@ -168,11 +168,25 @@ approvals and the configuration profile carry over. Because macOS treats a renam
 - The inspection certificate already trusted on the Mac stays valid; only *fresh*
   installs generate the new `ZeusLock DLP Proxy CA`.
 
+## Upgrading from 1.0.12 or earlier (paths were "ZeusDLP")
+
+Version 1.0.13 renamed the remaining paths:
+
+| | 1.0.12 and earlier | 1.0.13+ |
+|---|---|---|
+| Admin config | `/Library/Application Support/ZeusDLP/config.json` | `/Library/Application Support/ZeusLockDLP/config.json` |
+| Per-user data | `~/Library/Application Support/Zeus DLP Agent/` | `~/Library/Application Support/ZeusLock DLP Agent/` |
+
+The agent **migrates the per-user directory itself** on first launch (registration
+and the trusted certificate carry over) and still **reads the old admin config path**
+as a fallback, so an upgrade keeps working untouched. To finish the move, write the
+config to the new path and delete the old file — `install-zeus-agent.sh` does both.
+
 ## Removing the agent
 
 ```bash
 sudo pkill -f "ZeusLock - AI Data Protection"
 sudo rm -rf "/Applications/ZeusLock - AI Data Protection.app"
-sudo rm -f "/Library/Application Support/ZeusDLP/config.json"
+sudo rm -f "/Library/Application Support/ZeusLockDLP/config.json"
 # and remove the com.zeuslock.agent configuration profile from your MDM
 ```

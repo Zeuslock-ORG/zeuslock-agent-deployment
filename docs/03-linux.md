@@ -107,7 +107,7 @@ entry. Log out/in (or launch "ZeusLock - AI Data Protection" from your app menu)
 start the agent in your desktop session.
 
 > **Config file options.** The managed scope `/etc/zeuslock/agent.conf`
-> (`KEY=VALUE`) is used here. A JSON fallback at `/etc/zeus-dlp/config.json` is
+> (`KEY=VALUE`) is used here. A JSON fallback at `/etc/zeuslock-dlp/config.json` is
 > also supported — see [scripts/linux/config.json](../scripts/linux/config.json)
 > and the [configuration reference](configuration-reference.md).
 
@@ -125,11 +125,26 @@ on the old name, so:
 - The autostart entry (`/etc/xdg/autostart/zeuslock-agent.desktop`) is rewritten with
   the new `Exec=`; `/etc/zeuslock/agent.conf` is untouched.
 
+## Upgrading from 1.0.12 or earlier (paths were `zeus-dlp`)
+
+Version 1.0.13 renamed the remaining paths:
+
+| | 1.0.12 and earlier | 1.0.13+ |
+|---|---|---|
+| JSON fallback config | `/etc/zeus-dlp/config.json` | `/etc/zeuslock-dlp/config.json` |
+| Per-user data | `~/.config/Zeus DLP Agent/` | `~/.config/ZeusLock DLP Agent/` |
+| Trusted CA | `/usr/local/share/ca-certificates/zeus-dlp-ca.crt` | `/usr/local/share/ca-certificates/zeuslock-dlp-ca.crt` |
+
+`/etc/zeuslock/agent.conf` — the managed config this guide uses — is **unchanged**.
+The agent migrates its per-user directory on first launch, still reads the old JSON
+path as a fallback, and replaces the old CA file with the new one (same certificate,
+no re-trust prompt) the next time it installs trust.
+
 ## Removing the agent
 
 ```bash
 sudo pkill -f "zeus" || true
 sudo apt-get remove -y zeuslock-desktop-agent   # or: sudo dpkg -r zeuslock-desktop-agent
-sudo rm -f /etc/zeuslock/agent.conf /etc/zeus-dlp/config.json
+sudo rm -f /etc/zeuslock/agent.conf /etc/zeuslock-dlp/config.json
 sudo rm -f /etc/xdg/autostart/zeuslock-agent.desktop
 ```

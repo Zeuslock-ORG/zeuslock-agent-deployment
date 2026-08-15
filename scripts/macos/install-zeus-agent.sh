@@ -16,7 +16,7 @@ LICENSE_KEY="YOUR_LICENSE_KEY"   # zl_...
 DMG="${1:?Usage: sudo bash install-zeus-agent.sh /path/to/ZeusLock.dmg}"
 APP_NAME="ZeusLock - AI Data Protection.app"
 OLD_APP_NAME="Zeus - AI Data Protection.app"   # name before 1.0.12 — removed on upgrade
-CONFIG_DIR="/Library/Application Support/ZeusDLP"
+CONFIG_DIR="/Library/Application Support/ZeusLockDLP"
 
 if [[ $EUID -ne 0 ]]; then echo "Please run with sudo." >&2; exit 1; fi
 
@@ -49,6 +49,11 @@ cat > "$CONFIG_DIR/config.json" <<EOF
 }
 EOF
 chmod 644 "$CONFIG_DIR/config.json"
+
+# Upgrade from a pre-1.0.13 install: the admin config lived in ZeusDLP/. The
+# agent still reads it as a fallback, so remove it — one config file, one truth.
+rm -f "/Library/Application Support/ZeusDLP/config.json"
+rmdir "/Library/Application Support/ZeusDLP" 2>/dev/null || true
 
 echo "==> Done. Launch 'ZeusLock - AI Data Protection' from Applications and complete"
 echo "    any first-run approval prompts (login item, proxy trust)."
