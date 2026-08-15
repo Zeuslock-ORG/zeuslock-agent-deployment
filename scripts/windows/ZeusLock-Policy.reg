@@ -20,4 +20,4 @@ Windows Registry Editor Version 5.00
 ; Optional: guarantee the tray agent auto-starts machine-wide. Adjust the path if
 ; you changed the install location.
 [HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Run]
-"ZeusLock Agent"="\"C:\\Program Files\\Zeus - AI Data Protection\\Zeus - AI Data Protection.exe\""
+"ZeusLock Agent"="\"C:\\Program Files\\ZeusLock - AI Data Protection\\ZeusLock - AI Data Protection.exe\""

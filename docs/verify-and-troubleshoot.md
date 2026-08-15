@@ -14,7 +14,7 @@ An endpoint is protected only when **all four** pass. Run them on a target machi
 | OS | Command | Expect |
 |----|---------|--------|
 | Windows | `Get-Package -Name "*Zeus*"` | the agent + version |
-| macOS | `ls -d "/Applications/Zeus - AI Data Protection.app"` | the app path |
+| macOS | `ls -d "/Applications/ZeusLock - AI Data Protection.app"` | the app path |
 | Linux | `dpkg -l \| grep -i zeus` | the package |
 
 ### 2. Configured (Server URL + license key delivered)
@@ -31,7 +31,7 @@ macOS `/Library/Application Support/ZeusDLP/config.json`, Linux `/etc/zeus-dlp/c
 | OS | Command | Expect |
 |----|---------|--------|
 | Windows | `Get-Process *Zeus*` ; `Get-NetTCPConnection -LocalPort 9876 -State Listen` | process + listener |
-| macOS | `pgrep -fl "Zeus - AI Data Protection"` ; `lsof -iTCP:9876 -sTCP:LISTEN` | process + listener |
+| macOS | `pgrep -fl "ZeusLock - AI Data Protection"` ; `lsof -iTCP:9876 -sTCP:LISTEN` | process + listener |
 | Linux | `pgrep -fa zeus` ; `ss -ltnp \| grep 9876` | process + listener |
 
 The agent UI should read **"Protection active"** for the logged-in user.
@@ -80,9 +80,9 @@ Get-Content C:\Windows\Temp\ZeusLock-Install.log -Tail 30   # if you used Method
 
 **macOS**
 ```bash
-ls -d "/Applications/Zeus - AI Data Protection.app"
+ls -d "/Applications/ZeusLock - AI Data Protection.app"
 sudo defaults read /Library/Managed\ Preferences/com.zeuslock.agent 2>/dev/null
-pgrep -fl "Zeus - AI Data Protection"; lsof -iTCP:9876 -sTCP:LISTEN
+pgrep -fl "ZeusLock - AI Data Protection"; lsof -iTCP:9876 -sTCP:LISTEN
 ```
 
 **Linux**

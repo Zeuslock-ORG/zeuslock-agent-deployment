@@ -219,6 +219,22 @@ The same two ingredients apply — deploy the MSI, deliver the config:
 
 ---
 
+## Upgrading from 1.0.8 or earlier (product was "Zeus - AI Data Protection")
+
+Version 1.0.9 renamed the product to **ZeusLock - AI Data Protection**: the install
+folder is now `C:\Program Files\ZeusLock - AI Data Protection\` and the exe
+`ZeusLock - AI Data Protection.exe`. Same UpgradeCode, so the MSI upgrades in place
+(the old folder and shortcut are removed). Two things to know:
+
+- **Method A** (`Install-ZeusAgent.ps1`) needs no change — it uninstalls the older
+  package, installs the new MSI and re-registers autostart against the new exe.
+- **Method B / anyone using `ZeusLock-Policy.reg`**: the `Run` value points at the exe
+  path. Deploy the updated `.reg` **first**, then the new MSI. Until both have arrived
+  the machine has a `Run` entry for a path that does not exist yet — harmless, nothing
+  launches — and the next logon after both are in place starts the agent normally.
+- `Get-Package -Name "*Zeus*"` and the `*Zeus*` process matchers keep working (they
+  match the new name too).
+
 ## Removing the agent
 
 ```powershell

@@ -3,17 +3,17 @@
 # ZeusLock agent — manual Linux install + config (single desktop / pilot).
 # Installs the .deb, writes the managed config, and adds a desktop autostart entry.
 #
-#   Usage:  sudo bash install-zeus-agent.sh ./zeus-desktop-agent_amd64.deb
+#   Usage:  sudo bash install-zeus-agent.sh ./zeuslock-desktop-agent_amd64.deb
 #
 set -euo pipefail
 
 # ============================ EDIT THESE TWO ============================
 SERVER_URL="YOUR_SERVER_URL"     # e.g. https://api.zeuslock.ai
 LICENSE_KEY="YOUR_LICENSE_KEY"   # zl_...
-ZEUS_EXEC="zeus-ai-data-protection"   # launcher command (adjust if the .deb differs)
+ZEUS_EXEC="zeuslock-ai-data-protection"   # launcher command (1.0.9+; was zeus-ai-data-protection)
 # =======================================================================
 
-DEB="${1:?Usage: sudo bash install-zeus-agent.sh /path/to/zeus-desktop-agent.deb}"
+DEB="${1:?Usage: sudo bash install-zeus-agent.sh /path/to/zeuslock-desktop-agent.deb}"
 if [[ $EUID -ne 0 ]]; then echo "Please run with sudo." >&2; exit 1; fi
 
 echo "==> Installing $DEB"
@@ -43,5 +43,5 @@ NoDisplay=true
 EOF
 chmod 644 /etc/xdg/autostart/zeuslock-agent.desktop
 
-echo "==> Done. Log out/in (or launch 'Zeus - AI Data Protection' from the app menu)"
+echo "==> Done. Log out/in (or launch 'ZeusLock - AI Data Protection' from the app menu)"
 echo "    to start the agent in your desktop session."
