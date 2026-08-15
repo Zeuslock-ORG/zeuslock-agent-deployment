@@ -113,9 +113,9 @@ start the agent in your desktop session.
 
 ---
 
-## Upgrading from 1.0.8 or earlier (package was `zeus-desktop-agent`)
+## Upgrading from 1.0.11 or earlier (package was `zeus-desktop-agent`)
 
-Version 1.0.9 renamed the package to **`zeuslock-desktop-agent`** and the launcher to
+Version 1.0.12 renamed the package to **`zeuslock-desktop-agent`** and the launcher to
 `zeuslock-ai-data-protection`. The new package declares `Replaces`/`Conflicts`/`Provides`
 on the old name, so:
 

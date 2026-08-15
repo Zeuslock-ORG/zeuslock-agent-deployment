@@ -10,7 +10,7 @@ set -euo pipefail
 # ============================ EDIT THESE TWO ============================
 SERVER_URL="YOUR_SERVER_URL"     # e.g. https://api.zeuslock.ai
 LICENSE_KEY="YOUR_LICENSE_KEY"   # zl_...
-ZEUS_EXEC="zeuslock-ai-data-protection"   # launcher command (1.0.9+; was zeus-ai-data-protection)
+ZEUS_EXEC="zeuslock-ai-data-protection"   # launcher command (1.0.12+; was zeus-ai-data-protection)
 # =======================================================================
 
 DEB="${1:?Usage: sudo bash install-zeus-agent.sh /path/to/zeuslock-desktop-agent.deb}"

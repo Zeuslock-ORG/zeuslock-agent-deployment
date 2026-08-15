@@ -31,7 +31,7 @@ try {
     # --- 1. Install (skip if already present) --------------------------------
     $pkg = Get-Package -Name "*Zeus*" -ErrorAction SilentlyContinue |
            Where-Object { $_.Name -like "*Zeus*" } | Select-Object -First 1
-    $installDir = "C:\Program Files\ZeusLock - AI Data Protection"   # 1.0.9+; older installs (\Zeus - AI Data Protection) are removed below and replaced
+    $installDir = "C:\Program Files\ZeusLock - AI Data Protection"   # 1.0.12+; older installs (\Zeus - AI Data Protection) are removed below and replaced
     $installed  = $pkg -and (Test-Path (Join-Path $installDir "resources\app.asar"))
 
     if ($installed) {

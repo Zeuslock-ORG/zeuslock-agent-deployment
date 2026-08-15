@@ -153,9 +153,9 @@ Applications and complete any first-run approval prompts.
 
 ---
 
-## Upgrading from 1.0.8 or earlier (app was "Zeus - AI Data Protection.app")
+## Upgrading from 1.0.11 or earlier (app was "Zeus - AI Data Protection.app")
 
-Version 1.0.9 renamed the bundle to **ZeusLock - AI Data Protection.app**. The bundle
+Version 1.0.12 renamed the bundle to **ZeusLock - AI Data Protection.app**. The bundle
 identifier `com.zeuslock.desktop-agent` is unchanged, so login-item / background-item
 approvals and the configuration profile carry over. Because macOS treats a renamed
 `.app` as a new file, the **old bundle must be removed** or two copies exist:

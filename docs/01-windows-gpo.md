@@ -219,9 +219,9 @@ The same two ingredients apply — deploy the MSI, deliver the config:
 
 ---
 
-## Upgrading from 1.0.8 or earlier (product was "Zeus - AI Data Protection")
+## Upgrading from 1.0.11 or earlier (product was "Zeus - AI Data Protection")
 
-Version 1.0.9 renamed the product to **ZeusLock - AI Data Protection**: the install
+Version 1.0.12 renamed the product to **ZeusLock - AI Data Protection**: the install
 folder is now `C:\Program Files\ZeusLock - AI Data Protection\` and the exe
 `ZeusLock - AI Data Protection.exe`. Same UpgradeCode, so the MSI upgrades in place
 (the old folder and shortcut are removed). Two things to know:
