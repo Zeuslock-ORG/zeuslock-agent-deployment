@@ -3,7 +3,7 @@
 # ZeusLock agent — manual Linux install + config (single desktop / pilot).
 # Installs the .deb, writes the managed config, and adds a desktop autostart entry.
 #
-#   Usage:  sudo bash install-zeus-agent.sh ./zeuslock-desktop-agent_amd64.deb
+#   Usage:  sudo bash install-zeuslock-agent.sh ./zeuslock-desktop-agent_amd64.deb
 #
 set -euo pipefail
 
@@ -13,7 +13,7 @@ LICENSE_KEY="YOUR_LICENSE_KEY"   # zl_...
 ZEUS_EXEC="zeuslock-ai-data-protection"   # launcher command (1.0.12+; was zeus-ai-data-protection)
 # =======================================================================
 
-DEB="${1:?Usage: sudo bash install-zeus-agent.sh /path/to/zeuslock-desktop-agent.deb}"
+DEB="${1:?Usage: sudo bash install-zeuslock-agent.sh /path/to/zeuslock-desktop-agent.deb}"
 if [[ $EUID -ne 0 ]]; then echo "Please run with sudo." >&2; exit 1; fi
 
 echo "==> Installing $DEB"

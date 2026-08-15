@@ -22,7 +22,7 @@ next reboot/policy refresh.
 
 - A **domain controller** (Windows Server) with **Group Policy Management** (`gpmc.msc`).
 - Target machines are **domain-joined** and can reach your **Server URL** over HTTPS (443).
-- A file share readable by the machines you're deploying to (we use `\\DC01\ZeusDeploy`).
+- A file share readable by the machines you're deploying to (we use `\\DC01\ZeusLockDeploy`).
 - Rights to create/link a GPO at the domain or target OU.
 
 > ℹ️ **Why the agent needs a logged-in user:** the agent is a per-user tray app +
@@ -51,19 +51,19 @@ can read it.
 
 ```powershell
 # On DC01 (PowerShell as Administrator)
-New-Item -ItemType Directory -Force -Path C:\ZeusDeployment | Out-Null
-Copy-Item .\ZeusLock-<version>.msi C:\ZeusDeployment\ZeusLock.msi -Force
+New-Item -ItemType Directory -Force -Path C:\ZeusLockDeployment | Out-Null
+Copy-Item .\ZeusLock-<version>.msi C:\ZeusLockDeployment\ZeusLock.msi -Force
 
 # Share it read-only to domain computers (skip if the share already exists)
-New-SmbShare -Name ZeusDeploy -Path C:\ZeusDeployment -ReadAccess Everyone -ErrorAction SilentlyContinue
-Grant-SmbShareAccess -Name ZeusDeploy -AccountName "Domain Computers" -AccessRight Read -Force
+New-SmbShare -Name ZeusLockDeploy -Path C:\ZeusLockDeployment -ReadAccess Everyone -ErrorAction SilentlyContinue
+Grant-SmbShareAccess -Name ZeusLockDeploy -AccountName "Domain Computers" -AccessRight Read -Force
 
 # Confirm
-Test-Path \\$env:COMPUTERNAME\ZeusDeploy\ZeusLock.msi
+Test-Path \\$env:COMPUTERNAME\ZeusLockDeploy\ZeusLock.msi
 ```
 
-Also copy **[scripts/windows/Install-ZeusAgent.ps1](../scripts/windows/Install-ZeusAgent.ps1)**
-into `C:\ZeusDeployment\` (Method A uses it).
+Also copy **[scripts/windows/Install-ZeusLockAgent.ps1](../scripts/windows/Install-ZeusLockAgent.ps1)**
+into `C:\ZeusLockDeployment\` (Method A uses it).
 
 ---
 
@@ -93,13 +93,13 @@ reliable way to deploy the per-user MSI machine-wide.
 
 ### A.1 — Edit the script's values
 
-Open **[scripts/windows/Install-ZeusAgent.ps1](../scripts/windows/Install-ZeusAgent.ps1)**
+Open **[scripts/windows/Install-ZeusLockAgent.ps1](../scripts/windows/Install-ZeusLockAgent.ps1)**
 and set the three variables at the top:
 
 ```powershell
 $ServerUrl  = "YOUR_SERVER_URL"      # e.g. https://api.zeuslock.ai
 $LicenseKey = "YOUR_LICENSE_KEY"     # zl_...
-$MsiSource  = "\\DC01\ZeusDeploy\ZeusLock.msi"
+$MsiSource  = "\\DC01\ZeusLockDeploy\ZeusLock.msi"
 ```
 
 ### A.2 — Attach it as a computer Startup script
@@ -107,7 +107,7 @@ $MsiSource  = "\\DC01\ZeusDeploy\ZeusLock.msi"
 1. `gpmc.msc` → right-click **ZeusLock Agent - Deployment** → **Edit**.
 2. **Computer Configuration → Policies → Windows Settings → Scripts (Startup/Shutdown)**.
 3. Double-click **Startup → Add → Browse** — this opens the GPO's script folder.
-4. Copy `Install-ZeusAgent.ps1` into that folder, select it, click **OK**.
+4. Copy `Install-ZeusLockAgent.ps1` into that folder, select it, click **OK**.
    - If prompted for PowerShell vs. classic scripts, use the **PowerShell Scripts**
      tab so it runs under PowerShell.
 
@@ -129,7 +129,7 @@ and deliver config with a **Registry policy**. Two parts.
    Settings → Software Installation**.
 2. Right-click → **New → Package**.
 3. In the file picker, type the **UNC path** (not a local `C:\` path):
-   `\\DC01\ZeusDeploy\ZeusLock.msi`
+   `\\DC01\ZeusLockDeploy\ZeusLock.msi`
 4. Choose **Assigned**.
 
 > ⚠️ **Per-machine caveat:** the ZeusLock MSI is a *per-user* package. Native
@@ -212,9 +212,9 @@ The same two ingredients apply — deploy the MSI, deliver the config:
 - **SCCM:** package the MSI as an Application; install command
   `msiexec /i ZeusLock.msi /qn ALLUSERS=1 MSIINSTALLPERUSER=""`. Deliver config via
   a Configuration Item that writes `HKLM\SOFTWARE\Policies\ZeusLock`, or ship
-  `Install-ZeusAgent.ps1` as the install script.
+  `Install-ZeusLockAgent.ps1` as the install script.
 - **Intune:** wrap the MSI as a Win32 app (`.intunewin`) with the same install
-  command, or deploy `Install-ZeusAgent.ps1` as a platform script; deliver config
+  command, or deploy `Install-ZeusLockAgent.ps1` as a platform script; deliver config
   via a **Settings catalog / OMA-URI** registry policy to the same key.
 
 ---
@@ -226,7 +226,7 @@ folder is now `C:\Program Files\ZeusLock - AI Data Protection\` and the exe
 `ZeusLock - AI Data Protection.exe`. Same UpgradeCode, so the MSI upgrades in place
 (the old folder and shortcut are removed). Two things to know:
 
-- **Method A** (`Install-ZeusAgent.ps1`) needs no change — it uninstalls the older
+- **Method A** (`Install-ZeusLockAgent.ps1`) needs no change — it uninstalls the older
   package, installs the new MSI and re-registers autostart against the new exe.
 - **Method B / anyone using `ZeusLock-Policy.reg`**: the `Run` value points at the exe
   path. Deploy the updated `.reg` **first**, then the new MSI. Until both have arrived
@@ -262,4 +262,4 @@ Remove-Item "HKLM:\SOFTWARE\Policies\ZeusLock" -Recurse -Force -ErrorAction Sile
 
 To stop deploying, unlink the GPO (or set the Software Installation package to
 **Remove** for a managed uninstall on next reboot). A ready
-**[Uninstall-ZeusAgent.ps1](../scripts/windows/Uninstall-ZeusAgent.ps1)** is provided.
+**[Uninstall-ZeusLockAgent.ps1](../scripts/windows/Uninstall-ZeusLockAgent.ps1)** is provided.

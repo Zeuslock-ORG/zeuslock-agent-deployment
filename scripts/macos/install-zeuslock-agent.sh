@@ -4,7 +4,7 @@
 # Mounts the downloaded .dmg, installs the app to /Applications, and writes the
 # admin config file. Run with sudo.
 #
-#   Usage:  sudo bash install-zeus-agent.sh /path/to/ZeusLock.dmg
+#   Usage:  sudo bash install-zeuslock-agent.sh /path/to/ZeusLock.dmg
 #
 set -euo pipefail
 
@@ -13,7 +13,7 @@ SERVER_URL="YOUR_SERVER_URL"     # e.g. https://api.zeuslock.ai
 LICENSE_KEY="YOUR_LICENSE_KEY"   # zl_...
 # =======================================================================
 
-DMG="${1:?Usage: sudo bash install-zeus-agent.sh /path/to/ZeusLock.dmg}"
+DMG="${1:?Usage: sudo bash install-zeuslock-agent.sh /path/to/ZeusLock.dmg}"
 APP_NAME="ZeusLock - AI Data Protection.app"
 OLD_APP_NAME="Zeus - AI Data Protection.app"   # name before 1.0.12 — removed on upgrade
 CONFIG_DIR="/Library/Application Support/ZeusLockDLP"
@@ -28,7 +28,7 @@ SRC="$MOUNT/$APP_NAME"
 [[ -d "$SRC" ]] || { echo "Could not find '$APP_NAME' in the DMG." >&2; exit 1; }
 
 echo "==> Installing to /Applications"
-# Upgrade from a pre-1.0.12 install: the bundle was called "Zeus - AI Data
+# Upgrade from a pre-1.0.12 install: the bundle was called "ZeusLock - AI Data
 # Protection.app". Quit it and remove it so only the new bundle remains
 # (bundle id com.zeuslock.desktop-agent is unchanged, so login-item / MDM
 # approvals carry over).

@@ -18,7 +18,7 @@
 # ============================ EDIT THESE THREE ============================
 $ServerUrl  = "YOUR_SERVER_URL"                    # e.g. https://api.zeuslock.ai
 $LicenseKey = "YOUR_LICENSE_KEY"                   # zl_...
-$MsiSource  = "\\DC01\ZeusDeploy\ZeusLock.msi"     # UNC path to the staged MSI
+$MsiSource  = "\\DC01\ZeusLockDeploy\ZeusLock.msi"     # UNC path to the staged MSI
 # =========================================================================
 
 $ErrorActionPreference = "Stop"
@@ -37,7 +37,7 @@ try {
     if ($installed) {
         Log "Agent already installed ($($pkg.Name) $($pkg.Version)) — skipping MSI."
     } else {
-        # Remove any older/partial Zeus package first (different UpgradeCodes do
+        # Remove any older/partial ZeusLock package first (different UpgradeCodes do
         # not auto-upgrade).
         if ($pkg) {
             Log "Removing existing package $($pkg.Name) $($pkg.Version)"

@@ -95,11 +95,11 @@ Full checklist + troubleshooting: **[verify-and-troubleshoot.md](verify-and-trou
 ## Manual install (single machine)
 
 For a pilot or one-off — also the recommended first test. Use
-**[scripts/linux/install-zeus-agent.sh](../scripts/linux/install-zeus-agent.sh)**:
+**[scripts/linux/install-zeuslock-agent.sh](../scripts/linux/install-zeuslock-agent.sh)**:
 
 ```bash
 # Edit the two values at the top of the script, then:
-sudo bash install-zeus-agent.sh ./zeuslock-desktop-agent_amd64.deb
+sudo bash install-zeuslock-agent.sh ./zeuslock-desktop-agent_amd64.deb
 ```
 
 It installs the `.deb`, writes `/etc/zeuslock/agent.conf`, and adds the autostart

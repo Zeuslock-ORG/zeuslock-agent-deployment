@@ -140,11 +140,11 @@ Full checklist + troubleshooting: **[verify-and-troubleshoot.md](verify-and-trou
 ## Manual install (single Mac)
 
 For a pilot or a one-off machine — this is also the recommended first test before a
-fleet push. Use **[scripts/macos/install-zeus-agent.sh](../scripts/macos/install-zeus-agent.sh)**:
+fleet push. Use **[scripts/macos/install-zeuslock-agent.sh](../scripts/macos/install-zeuslock-agent.sh)**:
 
 ```bash
 # Edit the two values at the top of the script first, then:
-sudo bash install-zeus-agent.sh /path/to/ZeusLock.dmg
+sudo bash install-zeuslock-agent.sh /path/to/ZeusLock.dmg
 ```
 
 It mounts the DMG, copies the app to `/Applications`, and writes the config to
@@ -160,10 +160,10 @@ identifier `com.zeuslock.desktop-agent` is unchanged, so login-item / background
 approvals and the configuration profile carry over. Because macOS treats a renamed
 `.app` as a new file, the **old bundle must be removed** or two copies exist:
 
-- `install-zeus-agent.sh` does it (quits and deletes `Zeus - AI Data Protection.app`
+- `install-zeuslock-agent.sh` does it (quits and deletes `Zeus - AI Data Protection.app`
   before copying the new one).
 - MDM: add a pre-install step that removes `/Applications/Zeus - AI Data Protection.app`
-  (`pkill -f "Zeus - AI Data Protection"; rm -rf "/Applications/Zeus - AI Data
+  (`pkill -f "Zeus - AI Data Protection"; rm -rf "/Applications/ZeusLock - AI Data
   Protection.app"`), or push an uninstall of the old package first.
 - The inspection certificate already trusted on the Mac stays valid; only *fresh*
   installs generate the new `ZeusLock DLP Proxy CA`.
@@ -180,7 +180,7 @@ Version 1.0.13 renamed the remaining paths:
 The agent **migrates the per-user directory itself** on first launch (registration
 and the trusted certificate carry over) and still **reads the old admin config path**
 as a fallback, so an upgrade keeps working untouched. To finish the move, write the
-config to the new path and delete the old file — `install-zeus-agent.sh` does both.
+config to the new path and delete the old file — `install-zeuslock-agent.sh` does both.
 
 ## Removing the agent
 
