@@ -31,7 +31,7 @@ try {
     # --- 1. Install (skip if already present) --------------------------------
     $pkg = Get-Package -Name "*Zeus*" -ErrorAction SilentlyContinue |
            Where-Object { $_.Name -like "*Zeus*" } | Select-Object -First 1
-    $installDir = "C:\Program Files\Zeus - AI Data Protection"
+    $installDir = "C:\Program Files\ZeusLock - AI Data Protection"   # 1.0.9+; older installs (\Zeus - AI Data Protection) are removed below and replaced
     $installed  = $pkg -and (Test-Path (Join-Path $installDir "resources\app.asar"))
 
     if ($installed) {
@@ -74,7 +74,7 @@ try {
     Log "Wrote managed config to $rk (ServerUrl=$ServerUrl)"
 
     # --- 3. Auto-start for any logged-in user --------------------------------
-    $exe = Join-Path $installDir "Zeus - AI Data Protection.exe"
+    $exe = Join-Path $installDir "ZeusLock - AI Data Protection.exe"
     if (Test-Path $exe) {
         New-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" `
             -Name "ZeusLock Agent" -Value "`"$exe`"" -PropertyType String -Force | Out-Null

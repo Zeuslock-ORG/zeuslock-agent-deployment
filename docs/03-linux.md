@@ -31,7 +31,7 @@ hand for a single machine), and bind them to your organization via
 ## 2. Get your values + the installer
 
 Download the Linux installer from your dashboard (**Agents → Download**, Linux) —
-you'll get a `.deb` (e.g. `zeus-desktop-agent_<version>_amd64.deb`; an `arm64`
+you'll get a `.deb` (e.g. `zeuslock-desktop-agent_<version>_amd64.deb`; an `arm64`
 build is also available). The package is **generic** — no embedded credentials;
 binding happens through the config file.
 
@@ -51,7 +51,7 @@ Edit the `vars:` block at the top of the playbook (or pass with `-e`):
 vars:
   zeus_server_url: "YOUR_SERVER_URL"     # https://api.zeuslock.ai
   zeus_license_key: "YOUR_LICENSE_KEY"   # zl_...
-  zeus_deb_src: "./zeus-desktop-agent_amd64.deb"   # path on the control node
+  zeus_deb_src: "./zeuslock-desktop-agent_amd64.deb"   # path on the control node
 ```
 
 > 🔐 Keep the license key in an **Ansible Vault** variable, not in plain text:
@@ -99,11 +99,11 @@ For a pilot or one-off — also the recommended first test. Use
 
 ```bash
 # Edit the two values at the top of the script, then:
-sudo bash install-zeus-agent.sh ./zeus-desktop-agent_amd64.deb
+sudo bash install-zeus-agent.sh ./zeuslock-desktop-agent_amd64.deb
 ```
 
 It installs the `.deb`, writes `/etc/zeuslock/agent.conf`, and adds the autostart
-entry. Log out/in (or launch "Zeus - AI Data Protection" from your app menu) to
+entry. Log out/in (or launch "ZeusLock - AI Data Protection" from your app menu) to
 start the agent in your desktop session.
 
 > **Config file options.** The managed scope `/etc/zeuslock/agent.conf`
@@ -113,11 +113,23 @@ start the agent in your desktop session.
 
 ---
 
+## Upgrading from 1.0.8 or earlier (package was `zeus-desktop-agent`)
+
+Version 1.0.9 renamed the package to **`zeuslock-desktop-agent`** and the launcher to
+`zeuslock-ai-data-protection`. The new package declares `Replaces`/`Conflicts`/`Provides`
+on the old name, so:
+
+- `sudo apt install ./zeuslock-desktop-agent_<ver>_<arch>.deb` (what the script and the
+  playbook run) removes `zeus-desktop-agent` and installs the new one in one step.
+  Plain `dpkg -i` will refuse because of the conflict — use `apt install ./file.deb`.
+- The autostart entry (`/etc/xdg/autostart/zeuslock-agent.desktop`) is rewritten with
+  the new `Exec=`; `/etc/zeuslock/agent.conf` is untouched.
+
 ## Removing the agent
 
 ```bash
 sudo pkill -f "zeus" || true
-sudo apt-get remove -y zeus-desktop-agent   # or: sudo dpkg -r zeus-desktop-agent
+sudo apt-get remove -y zeuslock-desktop-agent   # or: sudo dpkg -r zeuslock-desktop-agent
 sudo rm -f /etc/zeuslock/agent.conf /etc/zeus-dlp/config.json
 sudo rm -f /etc/xdg/autostart/zeuslock-agent.desktop
 ```

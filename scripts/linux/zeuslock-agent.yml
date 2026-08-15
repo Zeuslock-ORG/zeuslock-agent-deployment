@@ -17,8 +17,8 @@
   vars:
     zeus_server_url: "YOUR_SERVER_URL"                 # https://api.zeuslock.ai
     zeus_license_key: "YOUR_LICENSE_KEY"               # zl_...
-    zeus_deb_src: "./zeus-desktop-agent_amd64.deb"     # path on the control node
-    zeus_exec: "zeus-ai-data-protection"               # launcher command (adjust if the .deb differs)
+    zeus_deb_src: "./zeuslock-desktop-agent_amd64.deb"  # path on the control node
+    zeus_exec: "zeuslock-ai-data-protection"           # launcher command (1.0.9+; was zeus-ai-data-protection)
 
   tasks:
     - name: Copy the .deb to the target

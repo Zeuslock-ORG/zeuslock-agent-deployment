@@ -14,7 +14,8 @@ LICENSE_KEY="YOUR_LICENSE_KEY"   # zl_...
 # =======================================================================
 
 DMG="${1:?Usage: sudo bash install-zeus-agent.sh /path/to/ZeusLock.dmg}"
-APP_NAME="Zeus - AI Data Protection.app"
+APP_NAME="ZeusLock - AI Data Protection.app"
+OLD_APP_NAME="Zeus - AI Data Protection.app"   # name before 1.0.9 — removed on upgrade
 CONFIG_DIR="/Library/Application Support/ZeusDLP"
 
 if [[ $EUID -ne 0 ]]; then echo "Please run with sudo." >&2; exit 1; fi
@@ -27,6 +28,15 @@ SRC="$MOUNT/$APP_NAME"
 [[ -d "$SRC" ]] || { echo "Could not find '$APP_NAME' in the DMG." >&2; exit 1; }
 
 echo "==> Installing to /Applications"
+# Upgrade from a pre-1.0.9 install: the bundle was called "Zeus - AI Data
+# Protection.app". Quit it and remove it so only the new bundle remains
+# (bundle id com.zeuslock.desktop-agent is unchanged, so login-item / MDM
+# approvals carry over).
+if [[ -d "/Applications/$OLD_APP_NAME" ]]; then
+  echo "==> Removing previous '$OLD_APP_NAME'"
+  pkill -f "$OLD_APP_NAME" 2>/dev/null || true
+  rm -rf "/Applications/$OLD_APP_NAME"
+fi
 rm -rf "/Applications/$APP_NAME"
 cp -R "$SRC" "/Applications/"
 
@@ -40,5 +50,5 @@ cat > "$CONFIG_DIR/config.json" <<EOF
 EOF
 chmod 644 "$CONFIG_DIR/config.json"
 
-echo "==> Done. Launch 'Zeus - AI Data Protection' from Applications and complete"
+echo "==> Done. Launch 'ZeusLock - AI Data Protection' from Applications and complete"
 echo "    any first-run approval prompts (login item, proxy trust)."

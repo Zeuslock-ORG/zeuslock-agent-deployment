@@ -16,7 +16,7 @@ Get-Process | Where-Object { $_.ProcessName -like "*Zeus*" } |
 # Uninstall the package
 $pkg = Get-Package -Name "*Zeus*" -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($pkg) { Log "Uninstalling $($pkg.Name) $($pkg.Version)"; Uninstall-Package -Name $pkg.Name -Force -ErrorAction SilentlyContinue | Out-Null }
-else      { Log "No Zeus package installed." }
+else      { Log "No ZeusLock package installed." }
 
 # Remove managed config + autostart
 Remove-Item "HKLM:\SOFTWARE\Policies\ZeusLock" -Recurse -Force -ErrorAction SilentlyContinue

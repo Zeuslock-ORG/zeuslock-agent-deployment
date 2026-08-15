@@ -33,11 +33,11 @@ your MDM. The same two ingredients as every platform: **install the app**, then
 ## 2. Get your values + the installer
 
 Download the macOS installer from your dashboard (**Agents → Download**, macOS).
-You'll get a `.dmg` containing **Zeus - AI Data Protection.app**.
+You'll get a `.dmg` containing **ZeusLock - AI Data Protection.app**.
 
 > For MDM fleet deployment, most tools deploy a **`.pkg`**. If your MDM can only
 > deploy a `.pkg`, wrap the `.app` from the DMG into a component package (e.g.
-> `pkgbuild --component "/path/Zeus - AI Data Protection.app" --install-location
+> `pkgbuild --component "/path/ZeusLock - AI Data Protection.app" --install-location
 > /Applications ZeusLock.pkg`), or use your MDM's "package a .app" / Composer
 > workflow. Jamf/Kandji/Mosyle all support uploading a `.pkg`.
 
@@ -59,7 +59,7 @@ Upload the `.pkg` (or `.app`) to your MDM and scope it to the target Macs:
   Installer package) → assign to a Blueprint.
 - **Intune:** **Apps → macOS → Add → macOS app (PKG)** → upload → assign.
 
-Installs to `/Applications/Zeus - AI Data Protection.app`.
+Installs to `/Applications/ZeusLock - AI Data Protection.app`.
 
 ---
 
@@ -95,7 +95,7 @@ is the agent's managed scope (highest priority).
 The agent runs in the user session and inspects AI traffic, so macOS will want a
 few approvals. Pre-approve them via MDM so users aren't prompted:
 
-- **Login item / background item** — allow "Zeus - AI Data Protection" to run at
+- **Login item / background item** — allow "ZeusLock - AI Data Protection" to run at
   login (a **Service Management – Managed Login Items** profile, or the app's own
   setting on first launch).
 - **Proxy trust** — the agent uses a local inspection proxy; ensure its CA is
@@ -115,14 +115,14 @@ On a target Mac, after the app + profile land and the user logs in:
 
 ```bash
 # 1. Installed?
-ls -d "/Applications/Zeus - AI Data Protection.app" && echo "app present"
+ls -d "/Applications/ZeusLock - AI Data Protection.app" && echo "app present"
 
 # 2. Managed config delivered?
 defaults read com.zeuslock.agent 2>/dev/null || \
   sudo defaults read /Library/Managed\ Preferences/com.zeuslock.agent
 
 # 3. Agent running + inspection proxy up?
-pgrep -fl "Zeus - AI Data Protection"
+pgrep -fl "ZeusLock - AI Data Protection"
 lsof -iTCP:9876 -sTCP:LISTEN
 
 # 4. (fallback config, if you used it)
@@ -153,11 +153,26 @@ Applications and complete any first-run approval prompts.
 
 ---
 
+## Upgrading from 1.0.8 or earlier (app was "Zeus - AI Data Protection.app")
+
+Version 1.0.9 renamed the bundle to **ZeusLock - AI Data Protection.app**. The bundle
+identifier `com.zeuslock.desktop-agent` is unchanged, so login-item / background-item
+approvals and the configuration profile carry over. Because macOS treats a renamed
+`.app` as a new file, the **old bundle must be removed** or two copies exist:
+
+- `install-zeus-agent.sh` does it (quits and deletes `Zeus - AI Data Protection.app`
+  before copying the new one).
+- MDM: add a pre-install step that removes `/Applications/Zeus - AI Data Protection.app`
+  (`pkill -f "Zeus - AI Data Protection"; rm -rf "/Applications/Zeus - AI Data
+  Protection.app"`), or push an uninstall of the old package first.
+- The inspection certificate already trusted on the Mac stays valid; only *fresh*
+  installs generate the new `ZeusLock DLP Proxy CA`.
+
 ## Removing the agent
 
 ```bash
-sudo pkill -f "Zeus - AI Data Protection"
-sudo rm -rf "/Applications/Zeus - AI Data Protection.app"
+sudo pkill -f "ZeusLock - AI Data Protection"
+sudo rm -rf "/Applications/ZeusLock - AI Data Protection.app"
 sudo rm -f "/Library/Application Support/ZeusDLP/config.json"
 # and remove the com.zeuslock.agent configuration profile from your MDM
 ```
