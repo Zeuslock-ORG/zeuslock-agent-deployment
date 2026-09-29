@@ -185,8 +185,13 @@ config to the new path and delete the old file — `install-zeuslock-agent.sh` d
 ## Removing the agent
 
 ```bash
-sudo pkill -f "ZeusLock - AI Data Protection"
-sudo rm -rf "/Applications/ZeusLock - AI Data Protection.app"
-sudo rm -f "/Library/Application Support/ZeusLockDLP/config.json"
+sudo bash uninstall-zeuslock-agent.sh
 # and remove the com.zeuslock.agent configuration profile from your MDM
 ```
+
+The script (in `scripts/macos/`) quits the agent, **restores the system proxy
+settings** it managed, removes the trusted `ZeusLock DLP Proxy CA` certificate
+from the System keychain, and deletes the app, the admin config and the
+per-user data. Do not remove the app by hand without the proxy cleanup: a Mac
+left pointing at the agent's local proxy fails AI-bound connections with
+`PROXY 127.0.0.1:9876` errors until the setting is switched off.
