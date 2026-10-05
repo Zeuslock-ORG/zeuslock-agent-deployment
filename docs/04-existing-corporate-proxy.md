@@ -22,7 +22,8 @@ working.
 - **Your proxy stays in charge of egress.** Filtering, logging and access rules apply as
   they did.
 - **Your proxy sees AI prompts after ZeusLock has anonymised them.** The agent is first in
-  the chain.
+  the chain. One exception to plan for: see *Exempt the ZeusLock platform from TLS
+  inspection* below.
 - **Internal addresses stay direct.** The agent follows your own bypass list or PAC rules,
   so intranet hosts are not sent to the proxy.
 
@@ -53,6 +54,18 @@ same store browsers use. If your CA is deployed to your machines (Group Policy, 
 `update-ca-certificates`), nothing more is needed.
 
 If you would rather hand the agent a specific bundle, set `ExtraCaFile` to a PEM file.
+
+### Exempt the ZeusLock platform from TLS inspection
+
+To decide what to anonymise, the agent sends the text of a prompt to the ZeusLock platform
+(your `ServerUrl`) for analysis. That call goes through your proxy like everything else. If
+your proxy decrypts it, **the original, un-anonymised text is readable on the proxy and in
+its logs**, even though the copy that later reaches the AI provider is anonymised.
+
+Add your `ServerUrl` host to the proxy's do-not-inspect list (ZIA "Do Not Inspect",
+Netskope do-not-decrypt, Squid `ssl_bump splice`, FortiGate `ssl-exempt`, Palo Alto
+decryption exclusion). This is the same exemption security-agent vendors require for their
+own traffic.
 
 ## Settings
 
@@ -93,7 +106,9 @@ not depend on reading the setting.
 
 ## What to ask your network team
 
-1. **Allow the agent's platform traffic**: your ZeusLock `ServerUrl` host on 443.
+1. **Allow the agent's platform traffic** (your ZeusLock `ServerUrl` host on 443) **and
+   exempt it from TLS inspection**, so prompt text sent for analysis is not readable on the
+   proxy.
 2. **Either** deploy your inspection CA to the OS store (usual case, nothing else to do),
    **or** exempt the AI provider hosts from TLS inspection. ZeusLock already inspects those
    flows before they leave the machine.
