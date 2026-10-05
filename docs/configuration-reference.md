@@ -81,6 +81,10 @@ to override behavior centrally:
 | `LogLevel` | string | `info` | `error` \| `warn` \| `info` \| `debug` |
 | `HeartbeatInterval` | number (ms) | `300000` | Check-in interval (5 min) |
 | `RulesSyncInterval` | number (ms) | `3600000` | Policy refresh (1 hr) |
+| `UpstreamProxy` | string | `auto` | Existing corporate proxy: `auto` \| `off` \| proxy URL — see [Existing corporate proxy](04-existing-corporate-proxy.md) (1.0.18+) |
+| `TrustSystemCa` | bool | `true` | Trust the OS certificate store for outbound TLS (1.0.18+) |
+| `ExtraCaFile` | string | — | PEM bundle of additional trusted CAs (1.0.18+) |
+| `ManageSystemProxy` | bool | `true` | `false`: never change system proxy settings (1.0.18+) |
 
 > The **DLP policy itself** (which data types block vs. alert) is **not** set on
 > the endpoint — it lives in your dashboard and is fetched from the server using

@@ -43,6 +43,9 @@ Supporting references:
 - **[docs/configuration-reference.md](docs/configuration-reference.md)** — every
   configuration key, where the agent reads it, and the precedence order. The
   authoritative source of truth for **Step 3** on all platforms.
+- **[docs/04-existing-corporate-proxy.md](docs/04-existing-corporate-proxy.md)** — running
+  the agent alongside a forward proxy you already have (proxy chaining, TLS inspection,
+  the settings that control it).
 - **[docs/verify-and-troubleshoot.md](docs/verify-and-troubleshoot.md)** — how to
   confirm protection is live, and a symptom→cause→fix table for every OS.
 
