@@ -1,0 +1,15 @@
+# Dependabot - ISO 27001 control #38 (A.8.8). Security alerts and security updates are
+# switched on in the repository settings (Code security); this file adds weekly version
+# updates, grouped so minor and patch bumps arrive as one PR per ecosystem.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Paris
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "deps(github-actions)"

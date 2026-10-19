@@ -1,0 +1,28 @@
+title = "zeuslock-agent-deployment gitleaks"
+# PUBLIC repository: Actions logs are public too, which is why the scan output is redacted.
+[extend]
+useDefault = true
+
+# ZeusLock credential shapes the default rules do not know. A real organisation API
+# key or CLI token is the one secret these repositories must never carry.
+[[rules]]
+id = "zeuslock-org-api-key"
+description = "ZeusLock organisation API key (zl_...)"
+regex = '''\bzl_[A-Za-z0-9]{16,}'''
+keywords = ["zl_"]
+tags = ["zeuslock", "api-key"]
+[[rules.allowlists]]
+description = "documentation placeholders, not keys"
+regexTarget = "match"
+regexes = ['''zl_(x{8,}|X{8,}|0{8,}|your|YOUR|example|EXAMPLE|placeholder|PLACEHOLDER|REPLACE|[A-Za-z0-9]*\.\.\.)''']
+
+[[rules]]
+id = "zeuslock-cli-token"
+description = "ZeusLock CLI access token (zlu_...)"
+regex = '''\bzlu_[A-Za-z0-9]{16,}'''
+keywords = ["zlu_"]
+tags = ["zeuslock", "cli-token"]
+[[rules.allowlists]]
+description = "documentation placeholders, not tokens"
+regexTarget = "match"
+regexes = ['''zlu_(x{8,}|X{8,}|0{8,}|your|YOUR|example|EXAMPLE|placeholder|PLACEHOLDER|REPLACE|[A-Za-z0-9]*\.\.\.)''']

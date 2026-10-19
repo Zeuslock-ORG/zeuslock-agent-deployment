@@ -1,0 +1,31 @@
+name: gitleaks
+
+# ISO 27001 control #39 (A.8.28): every push is scanned for committed secrets over
+# the FULL git history, so a key that lands on any branch is caught before merge.
+# Runs once per push and never on pull_request events (one run per push is the
+# repository rule). Uses the standalone binary with a pinned version and checksum:
+# gitleaks-action needs a paid licence for organisation repositories.
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: install gitleaks
+        run: |
+          VERSION=8.30.1
+          SHA256=551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+          curl -sSL -o gitleaks.tgz "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz"
+          echo "${SHA256}  gitleaks.tgz" | sha256sum -c -
+          tar -xzf gitleaks.tgz -C /usr/local/bin gitleaks
+          gitleaks version
+      - name: scan (full history, redacted output)
+        run: gitleaks git --config .gitleaks.toml --redact --verbose --no-banner .
