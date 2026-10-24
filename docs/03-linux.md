@@ -40,8 +40,9 @@ binding happens through the config file.
 ## 3. Deploy with Ansible (recommended)
 
 Use the ready playbook **[scripts/linux/zeuslock-agent.yml](../scripts/linux/zeuslock-agent.yml)**.
-It copies + installs the `.deb`, writes `/etc/zeuslock/agent.conf`, and adds a
-desktop autostart entry so the agent launches in each user's session.
+It copies + installs the `.deb`, writes `/etc/zeuslock/agent.conf` (`0640
+root:zeuslock`, see [3.3](#33--who-can-read-the-config)), and adds a desktop
+autostart entry so the agent launches in each user's session.
 
 ### 3.1 — Set your values
 
@@ -52,6 +53,8 @@ vars:
   zeus_server_url: "YOUR_SERVER_URL"     # https://api.zeuslock.ai
   zeus_license_key: "YOUR_LICENSE_KEY"   # zl_...
   zeus_deb_src: "./zeuslock-desktop-agent_amd64.deb"   # path on the control node
+  zeus_config_group: "zeuslock"   # group allowed to read the config
+  zeus_config_users: []           # empty = every local login account
 ```
 
 > 🔐 Keep the license key in an **Ansible Vault** variable, not in plain text:
@@ -64,7 +67,28 @@ ansible-playbook -i inventory.ini zeuslock-agent.yml --ask-become-pass
 # inventory.ini lists your target desktops under a [zeus_endpoints] group.
 ```
 
-The playbook is **idempotent** — re-running only changes what drifted.
+The playbook is **idempotent** — re-running only changes what drifted. The key is
+never printed: the config task runs with `no_log`, also under `-v` and `--diff`.
+
+### 3.3 — Who can read the config
+
+`agent.conf` holds your license key. The agent runs in each user's desktop session,
+not as root, so the file is **`0640 root:zeuslock`** (directory `/etc/zeuslock`
+`0750`) and your desktop users are made members of group `zeuslock`:
+
+- By default the playbook (and the manual script) adds **every local login
+  account** — UID between `UID_MIN` and `UID_MAX` from `/etc/login.defs`, with a
+  real shell. To choose the accounts yourself, list them in `zeus_config_users`.
+- System and service accounts (`www-data`, `nobody`, daemons…) are not members and
+  cannot read the key.
+- Group membership takes effect at the user's **next login**.
+- **Users created later** are not members until you run
+  `sudo usermod -aG zeuslock <user>` or re-run the playbook. Until then the agent
+  cannot read its configuration for that user.
+- **Directory logins (SSSD / AD / LDAP):** set `zeus_config_group` (or
+  `CONFIG_GROUP` in the script) to an existing directory group that holds your
+  desktop users, e.g. `"domain users"`. The file is then owned by that group and
+  no local membership is changed.
 
 ---
 
@@ -76,8 +100,10 @@ On a target machine (with a user logged into the desktop):
 # 1. Installed?
 dpkg -l | grep -i zeus
 
-# 2. Config delivered?
+# 2. Config delivered, and locked down?
 sudo cat /etc/zeuslock/agent.conf
+stat -c '%a %U:%G' /etc/zeuslock/agent.conf      # expect: 640 root:zeuslock
+id -nG <desktop-user> | tr ' ' '\n' | grep -x zeuslock   # the user is a member
 
 # 3. Agent running + inspection proxy up? (run inside the user's session)
 pgrep -fa zeus | head
@@ -98,18 +124,28 @@ For a pilot or one-off — also the recommended first test. Use
 **[scripts/linux/install-zeuslock-agent.sh](../scripts/linux/install-zeuslock-agent.sh)**:
 
 ```bash
-# Edit the two values at the top of the script, then:
+# Set SERVER_URL at the top of the script (or answer the prompt), then:
 sudo bash install-zeuslock-agent.sh ./zeuslock-desktop-agent_amd64.deb
+# License key (input hidden): zl_...
 ```
 
-It installs the `.deb`, writes `/etc/zeuslock/agent.conf`, and adds the autostart
-entry. Log out/in (or launch "ZeusLock - AI Data Protection" from your app menu) to
-start the agent in your desktop session.
+Leave `LICENSE_KEY` as the placeholder: the script asks for it with hidden input,
+so the key never sits in the script file, your shell history or a process list.
+
+It installs the `.deb`, creates group `zeuslock` and adds the local login accounts
+to it, writes `/etc/zeuslock/agent.conf` (`0640 root:zeuslock`, see
+[3.3](#33--who-can-read-the-config)), and adds the autostart entry. **Log out and
+back in** (the new group membership needs a fresh login), then the agent starts in
+your desktop session.
 
 > **Config file options.** The managed scope `/etc/zeuslock/agent.conf`
 > (`KEY=VALUE`) is used here. A JSON fallback at `/etc/zeuslock-dlp/config.json` is
 > also supported — see [scripts/linux/config.json](../scripts/linux/config.json)
-> and the [configuration reference](configuration-reference.md).
+> and the [configuration reference](configuration-reference.md). It holds the key
+> too, so install it the same way:
+> `sudo install -d -m 0750 -o root -g zeuslock /etc/zeuslock-dlp` then
+> `sudo install -m 0640 -o root -g zeuslock config.json /etc/zeuslock-dlp/config.json`
+> (the script and the playbook tighten an existing one for you).
 
 ---
 
@@ -147,4 +183,5 @@ sudo pkill -f "zeus" || true
 sudo apt-get remove -y zeuslock-desktop-agent   # or: sudo dpkg -r zeuslock-desktop-agent
 sudo rm -f /etc/zeuslock/agent.conf /etc/zeuslock-dlp/config.json
 sudo rm -f /etc/xdg/autostart/zeuslock-agent.desktop
+sudo groupdel zeuslock    # optional: the group that could read the config
 ```

@@ -134,6 +134,45 @@ UTF-8, **no BOM** (a byte-order mark crashes the parser).
 
 ---
 
+## Protecting the license key on the endpoint
+
+The license key binds endpoints to your organization, so every place that holds it
+is locked down. One constraint shapes the permissions: **the agent runs in each
+user's session, not as root or SYSTEM**, so the logged-in user's account must keep
+read access. Everything else (service and daemon accounts, network logons,
+sandboxed apps) is shut out. The scripts in this repository set these permissions
+for you, and re-assert them on every run:
+
+| OS | Where the key is | Permissions the scripts set | Who can read it |
+|----|------------------|-----------------------------|-----------------|
+| Windows | `HKLM\SOFTWARE\Policies\ZeusLock` | inheritance removed; SYSTEM + Administrators full control; **INTERACTIVE** read | logged-on users (where the agent runs), administrators, SYSTEM |
+| Windows | `C:\ProgramData\ZeusLockDLP\` (JSON fallback) | the same, set with `icacls` | the same |
+| macOS | `/Library/Application Support/ZeusLockDLP/config.json` | `0640 root:staff`, folder `0750` | local and mobile user accounts (all are in group `staff`), root |
+| macOS | `/Library/Managed Preferences/com.zeuslock.agent.plist` (MDM profile) | written by macOS | managed by macOS; readable by local accounts, like every managed preference |
+| Linux | `/etc/zeuslock/agent.conf` (and JSON fallbacks, if present) | `0640 root:zeuslock`, directory `0750` | members of group `zeuslock` (your desktop users), root |
+
+What to know:
+
+- **A user who runs the agent can read the key.** The agent needs it, and it runs as
+  that user. Treat the key as an organization credential present on every endpoint:
+  if one leaks, create a new key in the dashboard (**Settings → API Keys**), deploy
+  it, then revoke the old one.
+- **Keep the key out of shared places on the way to the endpoint.** The scripts
+  prompt for the key (input hidden) instead of taking it on the command line. On
+  Windows, a GPO startup script is stored in SYSVOL, which every domain user can
+  read: point the script at a key file only domain computers can read
+  ([Windows guide, A.1](01-windows-gpo.md#a1--edit-the-scripts-values)). With
+  Ansible, keep the key in Ansible Vault.
+- **Linux: users added later** must join the `zeuslock` group
+  (`sudo usermod -aG zeuslock <user>`, effective at their next login), or re-run
+  the playbook. Until then the agent cannot read the configuration for that user
+  ([Linux guide](03-linux.md#33--who-can-read-the-config)).
+- **If you deliver the configuration by other means** (your own scripts, the JSON
+  fallback, a GPO Registry preference), apply the same permissions. Each platform
+  guide shows how.
+
+---
+
 ## The installer is generic (why Step 3 exists)
 
 The installer downloaded from the dashboard is the **same file for every
