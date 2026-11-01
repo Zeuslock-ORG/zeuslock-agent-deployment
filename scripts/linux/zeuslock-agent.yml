@@ -9,6 +9,11 @@
 #   ws02.corp.local
 #
 # Keep zeus_license_key in an Ansible Vault variable in production.
+#
+# Who can read the config: the agent runs in each user's desktop session (not as
+# root), so /etc/zeuslock/agent.conf is root:<zeus_config_group> 0640 (directory
+# 0750) and the desktop users are made members of that group. System and service
+# accounts cannot read the license key. Re-run the playbook after adding users.
 
 - name: Deploy ZeusLock DLP agent
   hosts: zeus_endpoints
@@ -19,6 +24,8 @@
     zeus_license_key: "YOUR_LICENSE_KEY"               # zl_...
     zeus_deb_src: "./zeuslock-desktop-agent_amd64.deb"  # path on the control node
     zeus_exec: "zeuslock-ai-data-protection"           # launcher command (1.0.12+; was zeus-ai-data-protection)
+    zeus_config_group: "zeuslock"   # group allowed to read the config (may be an existing SSSD/AD group)
+    zeus_config_users: []           # users to add to it; empty = every local login account (UID_MIN..UID_MAX, real shell)
 
   tasks:
     - name: Copy the .deb to the target
@@ -33,16 +40,55 @@
         state: present
       # 'apt deb:' resolves dependencies from the configured repos.
 
-    - name: Ensure managed config directory exists
+    - name: Ensure the config reader group exists
+      ansible.builtin.group:
+        name: "{{ zeus_config_group }}"
+        system: true
+        state: present
+
+    # A directory (SSSD/AD) group is used as is: its membership is the directory's job.
+    - name: Check whether the config reader group is a local group
+      ansible.builtin.command: grep -q "^{{ zeus_config_group }}:" /etc/group
+      register: zeus_group_local
+      changed_when: false
+      failed_when: false
+
+    - name: Detect local login accounts (when zeus_config_users is empty)
+      ansible.builtin.shell: |
+        set -o pipefail
+        uid_min=$(awk '$1 == "UID_MIN" {print $2}' /etc/login.defs 2>/dev/null)
+        uid_max=$(awk '$1 == "UID_MAX" {print $2}' /etc/login.defs 2>/dev/null)
+        awk -F: -v min="${uid_min:-1000}" -v max="${uid_max:-60000}" \
+          '$3 >= min && $3 <= max && $7 !~ /(nologin|false)$/ {print $1}' /etc/passwd
+      args:
+        executable: /bin/bash
+      register: zeus_login_users
+      changed_when: false
+      when: zeus_group_local.rc == 0 and zeus_config_users | length == 0
+
+    - name: Let the desktop users read the config (takes effect at their next login)
+      ansible.builtin.user:
+        name: "{{ item }}"
+        groups: "{{ zeus_config_group }}"
+        append: true
+      loop: "{{ zeus_config_users if zeus_config_users | length > 0 else zeus_login_users.stdout_lines | default([]) }}"
+      when: zeus_group_local.rc == 0
+
+    - name: Ensure managed config directory exists (0750 root:{{ zeus_config_group }})
       ansible.builtin.file:
         path: /etc/zeuslock
         state: directory
-        mode: "0755"
+        owner: root
+        group: "{{ zeus_config_group }}"
+        mode: "0750"
 
-    - name: Write managed config (/etc/zeuslock/agent.conf)
+    # no_log + diff: false keep the license key out of the run output and --diff.
+    - name: Write managed config (/etc/zeuslock/agent.conf, 0640 root:{{ zeus_config_group }})
       ansible.builtin.copy:
         dest: /etc/zeuslock/agent.conf
-        mode: "0644"
+        owner: root
+        group: "{{ zeus_config_group }}"
+        mode: "0640"
         content: |
           # ZeusLock agent — managed configuration (KEY=VALUE).
           ServerUrl={{ zeus_server_url }}
@@ -51,6 +97,32 @@
           BlockingEnabled=true
           NetworkMonitoring=true
           FileMonitoring=true
+      no_log: true
+      diff: false
+
+    - name: Look for JSON fallback configs left by older installs
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /etc/zeuslock-dlp/config.json
+        - /etc/zeus-dlp/config.json
+      register: zeus_json_fallbacks
+
+    - name: Tighten JSON fallback configs that exist (they hold the key too)
+      ansible.builtin.file:
+        path: "{{ item.stat.path }}"
+        owner: root
+        group: "{{ zeus_config_group }}"
+        mode: "0640"
+      loop: "{{ zeus_json_fallbacks.results | selectattr('stat.exists') | list }}"
+      loop_control:
+        label: "{{ item.stat.path }}"
+
+    - name: Ensure the autostart directory exists
+      ansible.builtin.file:
+        path: /etc/xdg/autostart
+        state: directory
+        mode: "0755"
 
     - name: Add desktop autostart entry (starts the agent in each user's session)
       ansible.builtin.copy:

@@ -94,13 +94,43 @@ reliable way to deploy the per-user MSI machine-wide.
 ### A.1 — Edit the script's values
 
 Open **[scripts/windows/Install-ZeusLockAgent.ps1](../scripts/windows/Install-ZeusLockAgent.ps1)**
-and set the three variables at the top:
+and set the variables at the top:
 
 ```powershell
-$ServerUrl  = "YOUR_SERVER_URL"      # e.g. https://api.zeuslock.ai
-$LicenseKey = "YOUR_LICENSE_KEY"     # zl_...
-$MsiSource  = "\\DC01\ZeusLockDeploy\ZeusLock.msi"
+$ServerUrl      = "YOUR_SERVER_URL"      # e.g. https://api.zeuslock.ai
+$LicenseKey     = "YOUR_LICENSE_KEY"     # leave as is when you use $LicenseKeyPath
+$LicenseKeyPath = '\\DC01\ZeusLockKey$\license-key.txt'   # recommended, see below
+$MsiSource      = "\\DC01\ZeusLockDeploy\ZeusLock.msi"
 ```
+
+> 🔐 **Keep the license key out of SYSVOL.** A GPO startup script is stored in
+> SYSVOL, which **every domain user can read**. Instead of typing the key into the
+> script, put it in a file on a share that only domain computers can read, and set
+> `$LicenseKeyPath`. The startup script runs as SYSTEM and reaches the share as the
+> computer account. On DC01 (PowerShell as Administrator):
+>
+> ```powershell
+> New-Item -ItemType Directory -Force -Path C:\ZeusLockKey | Out-Null
+> Set-Content -Path C:\ZeusLockKey\license-key.txt -Value (Read-Host "License key")   # paste, Enter
+> # Domain Computers and Administrators by SID, so this works in any Windows language
+> $dc     = Get-ADGroup -Identity "$((Get-ADDomain).DomainSID.Value)-515"
+> $dcName = "$((Get-ADDomain).NetBIOSName)\$($dc.SamAccountName)"
+> $admins = ([Security.Principal.SecurityIdentifier]'S-1-5-32-544').Translate([Security.Principal.NTAccount]).Value
+> # NTFS: SYSTEM + Administrators full, Domain Computers read; nothing inherited
+> icacls C:\ZeusLockKey /inheritance:r /grant:r "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" "*$($dc.SID.Value):(OI)(CI)RX" /T
+> New-SmbShare -Name 'ZeusLockKey$' -Path C:\ZeusLockKey -ReadAccess $dcName -FullAccess $admins
+> ```
+>
+> (The `$` hides the share from browsing.) Typing the key into `$LicenseKey` still
+> works, for a pilot.
+
+What the script does with the key on each machine: it writes
+`HKLM\SOFTWARE\Policies\ZeusLock` and locks that key down first — inheritance
+removed, **SYSTEM and Administrators** full control, **INTERACTIVE** (any logged-on
+user, which is where the agent runs) read only. Service accounts, network logons and
+sandboxed apps cannot read the license key. The same permissions are applied to
+`C:\ProgramData\ZeusLockDLP\` (the JSON fallback folder). The key is never written
+to the script's log (`C:\Windows\Temp\ZeusLock-Install.log`).
 
 ### A.2 — Attach it as a computer Startup script
 
@@ -145,6 +175,20 @@ and deliver config with a **Registry policy**. Two parts.
 Deliver `ServerUrl` + `LicenseKey` (and any toggles) to
 `HKLM\SOFTWARE\Policies\ZeusLock` — the agent's managed scope.
 
+> 🔐 Two things Method A does for you that you must do yourself here:
+> - **Restrict the key.** A registry value inherits the permissions of
+>   `HKLM\SOFTWARE\Policies`, which every account on the machine can read. In the
+>   same GPO: **Computer Configuration → Policies → Windows Settings → Security
+>   Settings → Registry → Add Key** → `MACHINE\SOFTWARE\Policies\ZeusLock` →
+>   **Advanced → Disable inheritance → Remove all inherited permissions**, then
+>   grant **SYSTEM** Full Control, **Administrators** Full Control and
+>   **INTERACTIVE** Read → OK → *Replace existing permissions on all subkeys with
+>   inheritable permissions*. It applies at the next policy refresh once the key
+>   exists.
+> - **Mind where the value is stored.** A GPO Registry preference (Option 1) keeps
+>   its values in SYSVOL (`Registry.xml`), which every domain user can read.
+>   Method A with `$LicenseKeyPath` avoids that.
+
 **Option 1 — GPO Registry preference (click-through):**
 **Computer Configuration → Preferences → Windows Settings → Registry → New →
 Registry Item**, then add each value:
@@ -185,8 +229,12 @@ After the client reboots **and a user logs in**, verify on the client (or remote
 # 1. Installed?
 Get-Package -Name "*Zeus*" | Format-Table Name, Version
 
-# 2. Config delivered?
+# 2. Config delivered, and locked down?
 reg query "HKLM\SOFTWARE\Policies\ZeusLock"
+(Get-Acl "HKLM:\SOFTWARE\Policies\ZeusLock").Access |
+    Format-Table IdentityReference, RegistryRights, IsInherited
+# expect exactly: NT AUTHORITY\SYSTEM FullControl, BUILTIN\Administrators FullControl,
+#                 NT AUTHORITY\INTERACTIVE ReadKey - all with IsInherited False
 
 # 3. Group Policy applied?
 gpresult /r /scope computer | Select-String "ZeusLock"
@@ -216,6 +264,9 @@ The same two ingredients apply — deploy the MSI, deliver the config:
 - **Intune:** wrap the MSI as a Win32 app (`.intunewin`) with the same install
   command, or deploy `Install-ZeusLockAgent.ps1` as a platform script; deliver config
   via a **Settings catalog / OMA-URI** registry policy to the same key.
+- Either way, `Install-ZeusLockAgent.ps1` also sets the key's permissions (SYSTEM +
+  Administrators full, INTERACTIVE read). If you write the key another way, apply
+  the same permissions (see [B.2](#b2--deliver-config-via-registry-policy)).
 
 ---
 

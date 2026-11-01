@@ -66,7 +66,9 @@ each guide tells you which one to use.
 > your management system (GPO/MDM/Ansible-vault) — never commit it to a
 > repository, email, or shared document. The templates in this repo use the
 > placeholders `YOUR_SERVER_URL` and `YOUR_LICENSE_KEY`; you fill them in inside
-> your own management tooling.
+> your own management tooling. On each endpoint the scripts restrict the file or
+> registry key that holds it — see
+> [Protecting the license key](docs/configuration-reference.md#protecting-the-license-key-on-the-endpoint).
 
 Where the agent looks for these values (summary — full detail in the
 [configuration reference](docs/configuration-reference.md)):

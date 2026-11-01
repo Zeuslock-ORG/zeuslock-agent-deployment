@@ -7,6 +7,13 @@ Windows Registry Editor Version 5.00
 ;     fleets — see docs/01-windows-gpo.md, Method B.2).
 ;
 ; String values are REG_SZ ("..."); on/off toggles are REG_DWORD (1 = on, 0 = off).
+;
+; The license key is a secret. Importing this file leaves the key with the default
+; permissions of HKLM\SOFTWARE\Policies (readable by every account on the machine,
+; services included). Restrict it to SYSTEM + Administrators (full) and INTERACTIVE
+; (read): run Install-ZeusLockAgent.ps1 (Method A does it for you), or push the
+; permissions with the GPO setting "Security Settings > Registry" - see
+; docs/01-windows-gpo.md, B.2. Delete your filled-in copy of this file afterwards.
 
 [HKEY_LOCAL_MACHINE\SOFTWARE\Policies\ZeusLock]
 "ServerUrl"="YOUR_SERVER_URL"

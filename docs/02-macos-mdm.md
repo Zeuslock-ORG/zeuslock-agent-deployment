@@ -80,13 +80,22 @@ open it, replace `YOUR_SERVER_URL` and `YOUR_LICENSE_KEY`, then upload it as a
   the `.mobileconfig`.
 
 The profile lands at `/Library/Managed Preferences/com.zeuslock.agent.plist`, which
-is the agent's managed scope (highest priority).
+is the agent's managed scope (highest priority). macOS writes and protects that file
+itself; like every managed preference it is readable by the Mac's local accounts,
+which the agent needs because it runs as the logged-in user. Keep your filled-in
+`.mobileconfig` out of shared folders and repositories.
 
 > **Prefer a plain file instead of a profile?** You can drop the JSON fallback at
 > `/Library/Application Support/ZeusLockDLP/config.json` (template:
 > [scripts/macos/config.json](../scripts/macos/config.json)) via an MDM script or
 > Composer. The managed profile is preferred for fleets because it self-heals and
 > is tamper-resistant. See the [configuration reference](configuration-reference.md).
+> The file holds the license key: give it the permissions the manual script uses,
+> `0640 root:staff` with the folder `0750 root:staff` (every user account is in
+> `staff`, system daemons are not):
+> `chown root:staff "/Library/Application Support/ZeusLockDLP" "/Library/Application Support/ZeusLockDLP/config.json"`,
+> `chmod 750 "/Library/Application Support/ZeusLockDLP"`,
+> `chmod 640 "/Library/Application Support/ZeusLockDLP/config.json"`.
 
 ---
 
@@ -125,8 +134,9 @@ defaults read com.zeuslock.agent 2>/dev/null || \
 pgrep -fl "ZeusLock - AI Data Protection"
 lsof -iTCP:9876 -sTCP:LISTEN
 
-# 4. (fallback config, if you used it)
-cat "/Library/Application Support/ZeusLockDLP/config.json"
+# 4. (fallback config, if you used it) readable by the user, locked down?
+cat "/Library/Application Support/ZeusLockDLP/config.json"      # as the normal user
+stat -f '%Lp %Su:%Sg' "/Library/Application Support/ZeusLockDLP/config.json"   # expect: 640 root:staff
 ```
 
 Then the **live test**: as a normal user, open Chrome/Safari → **chatgpt.com** →
@@ -143,13 +153,19 @@ For a pilot or a one-off machine — this is also the recommended first test bef
 fleet push. Use **[scripts/macos/install-zeuslock-agent.sh](../scripts/macos/install-zeuslock-agent.sh)**:
 
 ```bash
-# Edit the two values at the top of the script first, then:
+# Set SERVER_URL at the top of the script (or answer the prompt), then:
 sudo bash install-zeuslock-agent.sh /path/to/ZeusLock.dmg
+# License key (input hidden): zl_...
 ```
 
+Leave `LICENSE_KEY` as the placeholder: the script asks for it with hidden input,
+so the key never sits in the script file, your shell history or a process list.
+
 It mounts the DMG, copies the app to `/Applications`, and writes the config to
-`/Library/Application Support/ZeusLockDLP/config.json`. Then launch the app from
-Applications and complete any first-run approval prompts.
+`/Library/Application Support/ZeusLockDLP/config.json` as `0640 root:staff` (folder
+`0750`): every local and mobile user account can read it, because the agent runs as
+the logged-in user; system daemons cannot. Then launch the app from Applications and
+complete any first-run approval prompts.
 
 ---
 

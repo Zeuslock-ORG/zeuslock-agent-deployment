@@ -23,6 +23,7 @@ An endpoint is protected only when **all four** pass. Run them on a target machi
 | Windows | `reg query "HKLM\SOFTWARE\Policies\ZeusLock"` | `ServerUrl` + `LicenseKey` |
 | macOS | `sudo defaults read /Library/Managed\ Preferences/com.zeuslock.agent` | `ServerUrl` + `LicenseKey` |
 | Linux | `sudo cat /etc/zeuslock/agent.conf` | `ServerUrl` + `LicenseKey` |
+| Linux | `stat -c '%a %U:%G' /etc/zeuslock/agent.conf` | `640 root:zeuslock` |
 
 (If you used the JSON fallback instead: Windows `C:\ProgramData\ZeusLockDLP\config.json`,
 macOS `/Library/Application Support/ZeusLockDLP/config.json`, Linux `/etc/zeuslock-dlp/config.json`.)
@@ -53,6 +54,7 @@ should appear under **Incidents** in your dashboard within a few seconds.
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
 | Agent installed but **UI says "not configured" / inactive** | Step 3 config not delivered (no `LicenseKey` in the managed scope **or** the JSON file) | Re-check check #2. Ensure the managed policy actually reached the endpoint (GPO: `gpupdate /force`; MDM: re-push profile). Or drop the JSON fallback file. |
+| **"Not configured" although the config is there** (Linux / macOS JSON fallback / Windows) | The agent runs as the logged-in user and cannot read the file or key: Linux user not in group `zeuslock` (or not logged in again since being added); permissions changed by hand | Linux: `sudo usermod -aG zeuslock <user>`, then log out and in. macOS JSON fallback: `0640 root:staff`. Windows: the key needs **INTERACTIVE** read — re-run `Install-ZeusLockAgent.ps1`. See [Protecting the license key](configuration-reference.md#protecting-the-license-key-on-the-endpoint). |
 | **"Invalid license" / agent tries to reach `api.zeuslock.io`** | `ServerUrl` not being read — wrong key name, or config in the wrong location | Confirm the key is exactly `ServerUrl` in the right location (check #2). On Windows, values must be under `HKLM\SOFTWARE\Policies\ZeusLock`. |
 | Config file present but **ignored / parser error** | The JSON/conf file was saved **with a UTF-8 BOM**, or invalid JSON | Re-save as UTF-8 **without BOM**. On Windows use `[IO.File]::WriteAllText($p,$json,(New-Object System.Text.UTF8Encoding($false)))`, never `Set-Content -Encoding UTF8`. |
 | **No tray icon / agent not running**, yet installed | The agent only runs in an **interactive desktop session**; it was "started" with no user logged in | Log in as a normal user. Ensure autostart is set (Windows: `HKLM\...\Run`; macOS: login item; Linux: `/etc/xdg/autostart/`). |
