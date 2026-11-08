@@ -114,6 +114,22 @@ Then the **live test**: as the desktop user, open the browser → **chatgpt.com*
 paste a test secret such as `4111 1111 1111 1111`. The agent should flag/block it
 and an **incident** should appear under **Incidents** in your dashboard.
 
+**Browsers.** When the agent starts it trusts its inspection certificate for every
+browser it supports, asking once for an administrator password (`pkexec`) unless it
+can use `sudo` without one:
+
+| Browser | Where the trust is written |
+|---|---|
+| All (system store) | `/usr/local/share/ca-certificates/zeuslock-dlp-ca.crt` |
+| Chromium, Google Chrome, Brave | `/etc/chromium-browser/policies/managed/`, `/etc/opt/chrome/policies/managed/`, `/etc/brave/policies/managed/` (`zeuslock-dlp-ca.json`) |
+| Firefox (1.0.31+, deb, tarball and snap) | `/etc/firefox/policies/policies.json` lists `/etc/firefox/policies/zeuslock-dlp-ca.crt` |
+
+Firefox on Linux ignores the system store, so with an agent older than 1.0.31 it shows
+**"Warning: Potential Security Risk Ahead"** on every AI site. An existing
+`policies.json` is kept: the agent only adds its certificate to `Certificates.Install`
+(a file it cannot parse is left untouched and the agent log says so). Restart Firefox
+after the first start of the agent.
+
 Full checklist + troubleshooting: **[verify-and-troubleshoot.md](verify-and-troubleshoot.md)**.
 
 ---
@@ -183,5 +199,12 @@ sudo pkill -f "zeus" || true
 sudo apt-get remove -y zeuslock-desktop-agent   # or: sudo dpkg -r zeuslock-desktop-agent
 sudo rm -f /etc/zeuslock/agent.conf /etc/zeuslock-dlp/config.json
 sudo rm -f /etc/xdg/autostart/zeuslock-agent.desktop
+sudo rm -f /usr/local/share/ca-certificates/zeuslock-dlp-ca.crt && sudo update-ca-certificates --fresh
+sudo rm -f /etc/chromium-browser/policies/managed/zeuslock-dlp-ca.json \
+           /etc/opt/chrome/policies/managed/zeuslock-dlp-ca.json \
+           /etc/brave/policies/managed/zeuslock-dlp-ca.json \
+           /etc/firefox/policies/zeuslock-dlp-ca.crt
+# Firefox: remove the zeuslock-dlp-ca.crt line from /etc/firefox/policies/policies.json
+# (or delete the file if ZeusLock was the only thing in it)
 sudo groupdel zeuslock    # optional: the group that could read the config
 ```
