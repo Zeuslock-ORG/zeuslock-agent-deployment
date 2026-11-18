@@ -85,6 +85,7 @@ to override behavior centrally:
 | `TrustSystemCa` | bool | `true` | Trust the OS certificate store for outbound TLS (1.0.18+) |
 | `ExtraCaFile` | string | — | PEM bundle of additional trusted CAs (1.0.18+) |
 | `ManageSystemProxy` | bool | `true` | `false`: never change system proxy settings (1.0.18+) |
+| `UiLanguage` | string | — | Language of everything the agent shows (window, pop-ups, tray, notifications, block messages in AI tools): `fr` \| `en` \| `es` \| `de`. Users cannot change it. Not set: the organisation's agent language (dashboard **Settings**), else the user's choice, else the computer's language (1.0.39+) |
 
 > The **DLP policy itself** (which data types block vs. alert) is **not** set on
 > the endpoint — it lives in your dashboard and is fetched from the server using
