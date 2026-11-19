@@ -37,6 +37,11 @@ macOS `/Library/Application Support/ZeusLockDLP/config.json`, Linux `/etc/zeuslo
 
 The agent UI should read **"Protection active"** for the logged-in user.
 
+**Survives a restart:** restart the machine, sign in (also as a second, standard
+user), and **without opening anything** repeat this check — the agent must be
+running in that user's session. On Windows it must not run elevated (Task Manager
+→ Details → *Elevated* = No).
+
 ### 4. Live DLP test
 As a normal user, open the browser → **chatgpt.com** → paste a test secret such as
 `4111 1111 1111 1111`. The agent should flag/block it, and a matching **incident**
@@ -58,6 +63,8 @@ should appear under **Incidents** in your dashboard within a few seconds.
 | **"Invalid license" / agent tries to reach `api.zeuslock.io`** | `ServerUrl` not being read — wrong key name, or config in the wrong location | Confirm the key is exactly `ServerUrl` in the right location (check #2). On Windows, values must be under `HKLM\SOFTWARE\Policies\ZeusLock`. |
 | Config file present but **ignored / parser error** | The JSON/conf file was saved **with a UTF-8 BOM**, or invalid JSON | Re-save as UTF-8 **without BOM**. On Windows use `[IO.File]::WriteAllText($p,$json,(New-Object System.Text.UTF8Encoding($false)))`, never `Set-Content -Encoding UTF8`. |
 | **No tray icon / agent not running**, yet installed | The agent only runs in an **interactive desktop session**; it was "started" with no user logged in | Log in as a normal user. Ensure autostart is set (Windows: `HKLM\...\Run`; macOS: login item; Linux: `/etc/xdg/autostart/`). |
+| **Windows: agent not running after a restart** (manual install) | Agent 1.0.41 or older installed with the Setup EXE: auto-start came from a `.bat` wrapper plus a scheduled task that ran the agent *elevated* (or as SYSTEM, invisible, when a deployment tool ran the installer) | Install 1.0.42 or later (MSI or Setup EXE): one `HKLM\...\Run` value → the agent `.exe`, for every user. Check: `reg query HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run` shows `ZeusLock Agent` (MSI) or `ZeusLock DLP Agent` (Setup EXE); Task Manager → Startup apps shows it **Enabled**; `schtasks /query /tn ZeusLockDLPAgent` finds nothing. |
+| **Windows: Chrome (or every browser) offline after the agent stopped** — `ERR_PROXY_CONNECTION_FAILED` | Only Chrome/Edge: a browser proxy policy `ProxySettings` → `127.0.0.1:9876` left by an agent ≤ 1.0.34 (a user-level agent cannot remove it). Every browser: agent ≤ 1.0.41 ended with End task / a crash left the Windows proxy on `127.0.0.1:9876` | Install 1.0.42 or later: the installer removes the stale policy, and the agent restores the user's proxy within seconds after End task / a crash. Right now: `reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings" /v ProxyEnable /t REG_DWORD /d 0 /f`, and as administrator delete `ProxySettings` under `HKLM\SOFTWARE\Policies\Google\Chrome` (and `…\Microsoft\Edge`, `…\BraveSoftware\Brave`) **only if** it shows `127.0.0.1:9876`. |
 | **Windows: agent missing after a GPO reboot** | The MSI is *per-user*; native "Assigned" computer install didn't apply it machine-wide | Use **Method A** (startup script `Install-ZeusLockAgent.ps1`), or add an `.mst` transform setting `ALLUSERS=1 MSIINSTALLPERUSER=""`. |
 | Agent active but **ChatGPT paste not intercepted** | System proxy not routed to the agent, or the agent's proxy CA isn't trusted | Restart the agent inside the user session; confirm the proxy is `LISTENING` on `9876`; ensure the inspection CA is trusted (MDM/GPO can pre-push it). |
 | **Endpoint doesn't appear under "Agents" in the dashboard** | Registration blocked — wrong/expired key, or can't reach the Server URL | Verify the key is valid and `https://<ServerUrl>` is reachable from the endpoint (firewall/proxy). Re-check `LicenseKey`. |

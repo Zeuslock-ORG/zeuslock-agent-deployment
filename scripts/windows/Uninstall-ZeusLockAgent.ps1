@@ -24,6 +24,29 @@ foreach ($runValue in @("ZeusLock DLP Agent", "ZeusLock Agent", "Zeus DLP Agent"
     Remove-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" -Name $runValue -Force -ErrorAction SilentlyContinue
 }
 Remove-Item "C:\Program Files\ZeusLock - AI Data Protection\zeuslock-start.bat" -Force -ErrorAction SilentlyContinue
+Remove-Item "C:\Program Files\ZeusLock\ZeusLock - AI Data Protection\zeuslock-start.bat" -Force -ErrorAction SilentlyContinue
+# Setup EXE up to 1.0.41 also created a logon scheduled task
+schtasks /delete /tn "ZeusLockDLPAgent" /f 2>$null | Out-Null
+
+# Proxy settings that still point at the stopped agent (127.0.0.1:9876-9879), and
+# nothing else: browser proxy policies machine-wide and per signed-in user (older
+# agents wrote them; they keep Chrome/Edge offline once the agent is gone), each
+# signed-in user's Windows proxy, and the agent's next-sign-in cleanup entry.
+function Test-Own($v) { return ([string]$v) -match '(127\.0\.0\.1|localhost):987[6-9]' }
+$users = @(Get-ChildItem Registry::HKEY_USERS | Where-Object { $_.PSChildName -match '^S-1-5-21-[0-9-]+$' } |
+    ForEach-Object { 'Registry::HKEY_USERS\' + $_.PSChildName + '\Software' })
+foreach ($root in @('HKLM:\SOFTWARE') + $users) {
+    foreach ($b in 'Google\Chrome', 'Microsoft\Edge', 'BraveSoftware\Brave') {
+        $k = "$root\Policies\$b"; $p = Get-ItemProperty $k -ErrorAction SilentlyContinue
+        if ($p -and (Test-Own $p.ProxySettings)) { Remove-ItemProperty $k -Name ProxySettings -ErrorAction SilentlyContinue; Log "Removed $k ProxySettings" }
+    }
+}
+foreach ($root in $users) {
+    $is = "$root\Microsoft\Windows\CurrentVersion\Internet Settings"; $p = Get-ItemProperty $is -ErrorAction SilentlyContinue
+    if ($p -and (Test-Own $p.ProxyServer) -and $p.ProxyEnable -eq 1) { Set-ItemProperty $is -Name ProxyEnable -Value 0 -Type DWord; Log "Proxy switched off: $is" }
+    if ($p -and (Test-Own $p.AutoConfigURL)) { Remove-ItemProperty $is -Name AutoConfigURL -ErrorAction SilentlyContinue }
+    Remove-ItemProperty "$root\Microsoft\Windows\CurrentVersion\Run" -Name ZeusLockProxyCleanup, ZeusProxyCleanup -ErrorAction SilentlyContinue
+}
 
 # Remove the admin JSON fallback (if used)
 Remove-Item "C:\ProgramData\ZeusLockDLP\config.json" -Force -ErrorAction SilentlyContinue
