@@ -24,6 +24,9 @@ foreach ($runValue in @("ZeusLock DLP Agent", "ZeusLock Agent", "Zeus DLP Agent"
     Remove-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" -Name $runValue -Force -ErrorAction SilentlyContinue
 }
 Remove-Item "C:\Program Files\ZeusLock - AI Data Protection\zeuslock-start.bat" -Force -ErrorAction SilentlyContinue
+Remove-Item "C:\Program Files\ZeusLock\ZeusLock - AI Data Protection\zeuslock-start.bat" -Force -ErrorAction SilentlyContinue
+# Setup EXE up to 1.0.41 also created a logon scheduled task
+schtasks /delete /tn "ZeusLockDLPAgent" /f 2>$null | Out-Null
 
 # Remove the admin JSON fallback (if used)
 Remove-Item "C:\ProgramData\ZeusLockDLP\config.json" -Force -ErrorAction SilentlyContinue
