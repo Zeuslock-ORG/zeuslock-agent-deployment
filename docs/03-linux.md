@@ -1,210 +1,209 @@
-# Linux — Ansible Deployment (Debian/Ubuntu `.deb`)
+# Linux: deploy with Ansible (Ubuntu Desktop `.deb`)
 
-Deploy the ZeusLock agent to Linux **desktops/workstations** with Ansible (or by
-hand for a single machine), and bind them to your organization via
-`/etc/zeuslock/agent.conf`.
+Deploy the ZeusLock agent to Ubuntu desktops with Ansible, or with one script on a single
+desktop, and bind them to your organisation through `/etc/zeuslock/agent.conf`. For agent
+1.0.45 or later.
 
-> ℹ️ **Scope:** the agent protects **interactive desktop** use of AI tools in a
-> browser — it runs as a tray app + local proxy in the user's graphical session.
-> It is not meant for headless servers (no desktop session = nothing to protect).
-> As with macOS, the **config mechanism** below is exact (read from the agent
-> source); pilot the **install** on one machine before a fleet push.
+**Steps:**
+1. [Requirements](#1-requirements)
+2. [Get your values and the package](#2-get-your-values-and-the-package)
+3. [Deploy with Ansible](#3-deploy-with-ansible)
+4. [Verify](#4-verify)
 
-**You'll do:**
-1. [Prerequisites](#1-prerequisites)
-2. [Get your values + the installer](#2-get-your-values--the-installer)
-3. [Deploy with Ansible](#3-deploy-with-ansible-recommended)
-4. [Verify](#4-verify) · [Manual install](#manual-install-single-machine)
+Also: [One desktop](#one-desktop) · [Upgrade](#upgrade) · [Remove](#remove-the-agent) ·
+[If something fails](#if-something-fails)
 
 ---
 
-## 1. Prerequisites
+## 1. Requirements
 
-- Target machines run a Debian-family desktop (Ubuntu, Debian, Linux Mint…) with a
-  graphical session, and can reach your **Server URL** over HTTPS (443).
-- An Ansible control node with SSH + sudo to the targets (for the Ansible path).
-- Your **Server URL** + **License key**
-  ([main guide, Step 1](../README.md#before-you-start--get-your-two-values-step-1)).
+- **Ubuntu Desktop** (24.04 is the tested version) with the GNOME desktop, **amd64 or arm64**.
+  The agent protects people at a desktop session: it is not for headless servers. RPM-based
+  distributions (RHEL, Fedora) are not supported.
+- The desktops reach your Server URL over HTTPS (443).
+- For Ansible: a control node with SSH and sudo on the desktops.
+- Your **Server URL** and **license key** (`zl_…`):
+  [main guide, Step 1](../README.md#step-1-get-your-two-values).
 
----
+## 2. Get your values and the package
 
-## 2. Get your values + the installer
+In the dashboard: **Agents** → **Download Agent** → Linux → **.deb (amd64)** or **.deb (arm64)**.
 
-Download the Linux installer from your dashboard (**Agents → Download**, Linux) —
-you'll get a `.deb` (e.g. `zeuslock-desktop-agent_<version>_amd64.deb`; an `arm64`
-build is also available). The package is **generic** — no embedded credentials;
-binding happens through the config file.
+Expected result: `zeuslock-desktop-agent_<version>_amd64.deb` (or `_arm64.deb`). It carries no
+credentials. It installs the command `zeuslock-ai-data-protection` and starts the agent at
+every user's login (`/etc/xdg/autostart/zeuslock-agent.desktop`).
 
----
+### Which configuration file
 
-## 3. Deploy with Ansible (recommended)
+| You deploy with | File | The desktop is |
+|---|---|---|
+| Ansible or `install-zeuslock-agent.sh` (this guide) | `/etc/zeuslock/agent.conf` | **managed**: no **Quit** in the agent menu; the agent is restarted if it is stopped |
+| The dashboard's **Local agent install** page (one desktop by hand) | `/etc/zeuslock-dlp/config.json` | not managed: the user can quit the agent |
 
-Use the ready playbook **[scripts/linux/zeuslock-agent.yml](../scripts/linux/zeuslock-agent.yml)**.
-It copies + installs the `.deb`, writes `/etc/zeuslock/agent.conf` (`0640
-root:zeuslock`, see [3.3](#33--who-can-read-the-config)), and adds a desktop
-autostart entry so the agent launches in each user's session.
+Use one or the other. When both exist, `/etc/zeuslock/agent.conf` wins.
 
-### 3.1 — Set your values
+## 3. Deploy with Ansible
 
-Edit the `vars:` block at the top of the playbook (or pass with `-e`):
+Use the playbook [scripts/linux/zeuslock-agent.yml](../scripts/linux/zeuslock-agent.yml). It
+installs or upgrades the `.deb`, creates the group `zeuslock`, adds the desktop users to it,
+and writes `/etc/zeuslock/agent.conf` as `0640 root:zeuslock`.
 
-```yaml
-vars:
-  zeus_server_url: "YOUR_SERVER_URL"     # https://api.zeuslock.ai
-  zeus_license_key: "YOUR_LICENSE_KEY"   # zl_...
-  zeus_deb_src: "./zeuslock-desktop-agent_amd64.deb"   # path on the control node
-  zeus_config_group: "zeuslock"   # group allowed to read the config
-  zeus_config_users: []           # empty = every local login account
-```
+1. Encrypt the key with Ansible Vault:
 
-> 🔐 Keep the license key in an **Ansible Vault** variable, not in plain text:
-> `ansible-vault encrypt_string 'zl_...' --name 'zeus_license_key'`.
+   ```bash
+   ansible-vault encrypt_string 'zl_...' --name 'zeus_license_key'
+   ```
 
-### 3.2 — Run it
+   Expected result: a `zeus_license_key: !vault |` block. Put it in your vars file or in the
+   playbook's `vars:` in place of the placeholder.
 
-```bash
-ansible-playbook -i inventory.ini zeuslock-agent.yml --ask-become-pass
-# inventory.ini lists your target desktops under a [zeus_endpoints] group.
-```
+2. Set the other values in the `vars:` block of the playbook:
 
-The playbook is **idempotent** — re-running only changes what drifted. The key is
-never printed: the config task runs with `no_log`, also under `-v` and `--diff`.
+   ```yaml
+   zeus_server_url: "https://api.zeuslock.ai"
+   zeus_deb_src: "./zeuslock-desktop-agent_1.0.45_amd64.deb"   # path on the control node
+   zeus_config_group: "zeuslock"   # group allowed to read the config
+   zeus_config_users: []           # empty = every local login account
+   ```
 
-### 3.3 — Who can read the config
+3. List the desktops under `[zeus_endpoints]` in `inventory.ini`, then run:
 
-`agent.conf` holds your license key. The agent runs in each user's desktop session,
-not as root, so the file is **`0640 root:zeuslock`** (directory `/etc/zeuslock`
-`0750`) and your desktop users are made members of group `zeuslock`:
+   ```bash
+   ansible-playbook -i inventory.ini zeuslock-agent.yml --ask-become-pass --ask-vault-pass
+   ```
 
-- By default the playbook (and the manual script) adds **every local login
-  account** — UID between `UID_MIN` and `UID_MAX` from `/etc/login.defs`, with a
-  real shell. To choose the accounts yourself, list them in `zeus_config_users`.
-- System and service accounts (`www-data`, `nobody`, daemons…) are not members and
-  cannot read the key.
-- Group membership takes effect at the user's **next login**.
-- **Users created later** are not members until you run
-  `sudo usermod -aG zeuslock <user>` or re-run the playbook. Until then the agent
-  cannot read its configuration for that user.
-- **Directory logins (SSSD / AD / LDAP):** set `zeus_config_group` (or
-  `CONFIG_GROUP` in the script) to an existing directory group that holds your
-  desktop users, e.g. `"domain users"`. The file is then owned by that group and
-  no local membership is changed.
+   Expected result: `failed=0` for every desktop. The key is never printed, also with `-v`
+   and `--diff`. Running it again is safe.
 
----
+4. Each desktop user logs out and back in once (the new group membership needs a fresh login).
+
+### Who can read the configuration
+
+`agent.conf` holds your license key, and the agent runs in each user's desktop session, not
+as root. So the file is `0640 root:zeuslock` (folder `/etc/zeuslock` `0750`) and the desktop
+users are members of `zeuslock`:
+
+- By default every local login account (UID between `UID_MIN` and `UID_MAX` in
+  `/etc/login.defs`, with a real shell) is added. To choose them, list them in
+  `zeus_config_users`.
+- System and service accounts (`www-data`, `nobody`…) are not members and cannot read the key.
+- **Users created later** need `sudo usermod -aG zeuslock <user>` (or a new playbook run) and a
+  new login. Until then the agent shows **Configuration not readable - ask your
+  administrator**.
+- **Directory logins (SSSD / AD / LDAP):** set `zeus_config_group` (or `CONFIG_GROUP` in the
+  script) to an existing directory group of your desktop users, e.g. `"domain users"`. No
+  local group is created and no membership is changed.
 
 ## 4. Verify
 
-On a target machine (with a user logged into the desktop):
+1. Log in to a desktop as a normal user.
 
-```bash
-# 1. Installed?
-dpkg -l | grep -i zeus
+   Expected result: the ZeusLock icon appears in the top bar.
 
-# 2. Config delivered, and locked down?
-sudo cat /etc/zeuslock/agent.conf
-stat -c '%a %U:%G' /etc/zeuslock/agent.conf      # expect: 640 root:zeuslock
-id -nG <desktop-user> | tr ' ' '\n' | grep -x zeuslock   # the user is a member
+2. At its first start the agent asks once for an administrator password (**Authentication
+   Required**) to trust its certificate for the system, Chrome/Chromium/Brave and Firefox.
+   An administrator types it.
 
-# 3. Agent running + inspection proxy up? (run inside the user's session)
-pgrep -fa zeus | head
-ss -ltnp 2>/dev/null | grep 9876 || sudo lsof -iTCP:9876 -sTCP:LISTEN
-```
+   Expected result: the icon shows **Protection active** and your organisation's name.
 
-Then the **live test**: as the desktop user, open the browser → **chatgpt.com** →
-paste a test secret such as `4111 1111 1111 1111`. The agent should flag/block it
-and an **incident** should appear under **Incidents** in your dashboard.
+3. In a terminal:
 
-**Browsers.** When the agent starts it trusts its inspection certificate for every
-browser it supports, asking once for an administrator password (`pkexec`) unless it
-can use `sudo` without one:
+   ```bash
+   dpkg-query -W zeuslock-desktop-agent
+   sudo cat /etc/zeuslock/agent.conf
+   stat -c '%a %U:%G' /etc/zeuslock/agent.conf
+   id -nG | tr ' ' '\n' | grep -x zeuslock
+   ss -ltn | grep 9876
+   ```
 
-| Browser | Where the trust is written |
+   Expected result: version 1.0.45 or later; `ServerUrl` and `LicenseKey`; `640 root:zeuslock`;
+   `zeuslock`; one listener on `127.0.0.1:9876`.
+
+4. Restart Firefox if it was open, then open **chatgpt.com** and send
+   `My card is 4111 1111 1111 1111`.
+
+   Expected result: the agent flags or blocks it, an incident appears under **Incidents**,
+   and the desktop is listed under **Agents** in the dashboard.
+
+Where the agent puts its certificate trust:
+
+| Browser | File |
 |---|---|
-| All (system store) | `/usr/local/share/ca-certificates/zeuslock-dlp-ca.crt` |
-| Chromium, Google Chrome, Brave | `/etc/chromium-browser/policies/managed/`, `/etc/opt/chrome/policies/managed/`, `/etc/brave/policies/managed/` (`zeuslock-dlp-ca.json`) |
-| Firefox (1.0.31+, deb, tarball and snap) | `/etc/firefox/policies/policies.json` lists `/etc/firefox/policies/zeuslock-dlp-ca.crt` |
+| System store (most apps) | `/usr/local/share/ca-certificates/zeuslock-dlp-ca.crt` |
+| Chromium, Google Chrome, Brave | `zeuslock-dlp-ca.json` in `/etc/chromium-browser/policies/managed/`, `/etc/opt/chrome/policies/managed/`, `/etc/brave/policies/managed/` |
+| Firefox (deb, tarball and snap) | `/etc/firefox/policies/policies.json` lists `/etc/firefox/policies/zeuslock-dlp-ca.crt` |
 
-Firefox on Linux ignores the system store, so with an agent older than 1.0.31 it shows
-**"Warning: Potential Security Risk Ahead"** on every AI site. An existing
-`policies.json` is kept: the agent only adds its certificate to `Certificates.Install`
-(a file it cannot parse is left untouched and the agent log says so). Restart Firefox
-after the first start of the agent.
-
-Full checklist + troubleshooting: **[verify-and-troubleshoot.md](verify-and-troubleshoot.md)**.
+An existing `policies.json` is kept: the agent only adds its certificate. Full checklist and
+logs: [verify-and-troubleshoot.md](verify-and-troubleshoot.md).
 
 ---
 
-## Manual install (single machine)
+## One desktop
 
-For a pilot or one-off — also the recommended first test. Use
-**[scripts/linux/install-zeuslock-agent.sh](../scripts/linux/install-zeuslock-agent.sh)**:
+For a pilot, or a desktop outside Ansible, with the same managed configuration as the
+playbook. Download the `.deb` and
+[scripts/linux/install-zeuslock-agent.sh](../scripts/linux/install-zeuslock-agent.sh), then:
 
 ```bash
-# Set SERVER_URL at the top of the script (or answer the prompt), then:
-sudo bash install-zeuslock-agent.sh ./zeuslock-desktop-agent_amd64.deb
+sudo bash install-zeuslock-agent.sh ./zeuslock-desktop-agent_1.0.45_amd64.deb
+# Server URL (e.g. https://api.zeuslock.ai): https://api.zeuslock.ai
 # License key (input hidden): zl_...
 ```
 
-Leave `LICENSE_KEY` as the placeholder: the script asks for it with hidden input,
-so the key never sits in the script file, your shell history or a process list.
+Expected result: `==> Done.` Log out and back in: the agent starts.
 
-It installs the `.deb`, creates group `zeuslock` and adds the local login accounts
-to it, writes `/etc/zeuslock/agent.conf` (`0640 root:zeuslock`, see
-[3.3](#33--who-can-read-the-config)), and adds the autostart entry. **Log out and
-back in** (the new group membership needs a fresh login), then the agent starts in
-your desktop session.
+The script installs or upgrades the `.deb`, creates the group `zeuslock` and adds the local
+login accounts, and writes `/etc/zeuslock/agent.conf` (`0640 root:zeuslock`). Leave
+`LICENSE_KEY` as the placeholder in the script: it asks for the key with hidden input, so the
+key never sits in a file, your shell history or a process list.
 
-> **Config file options.** The managed scope `/etc/zeuslock/agent.conf`
-> (`KEY=VALUE`) is used here. A JSON fallback at `/etc/zeuslock-dlp/config.json` is
-> also supported — see [scripts/linux/config.json](../scripts/linux/config.json)
-> and the [configuration reference](configuration-reference.md). It holds the key
-> too, so install it the same way:
-> `sudo install -d -m 0750 -o root -g zeuslock /etc/zeuslock-dlp` then
-> `sudo install -m 0640 -o root -g zeuslock config.json /etc/zeuslock-dlp/config.json`
-> (the script and the playbook tighten an existing one for you).
+The dashboard's **Local agent install** page is the other way for one desktop:
+`sudo apt install ./zeuslock-desktop-agent_*.deb`, then its `sudo tee` command writes
+`/etc/zeuslock-dlp/config.json` (not managed).
+
+## Upgrade
+
+The agent does not update itself. Put the new `.deb` on the control node, set `zeus_deb_src`
+to it and run the playbook again; on one desktop, run `install-zeuslock-agent.sh` with the new
+file. Agents already running keep the old version until the user logs in again. To switch a
+desktop to the On-Device package, deploy `zeuslock-desktop-agent-ondevice_<version>_<arch>.deb`
+the same way: it replaces the normal package.
+
+## Remove the agent
+
+Run [scripts/linux/uninstall-zeuslock-agent.sh](../scripts/linux/uninstall-zeuslock-agent.sh)
+on each desktop:
+
+```bash
+sudo bash uninstall-zeuslock-agent.sh
+# or for a fleet:
+ansible zeus_endpoints -i inventory.ini -b --ask-become-pass -m ansible.builtin.script -a uninstall-zeuslock-agent.sh
+```
+
+Expected result: `==> Done. ZeusLock is removed.`
+
+Removing the package stops every running agent and gives each signed-in user's GNOME proxy,
+Claude Code and Cursor settings back; users who are not signed in get the same at their next
+login. The script also removes the configuration and the certificate trust (system store,
+Chrome/Chromium/Brave policy, the ZeusLock entry in Firefox's `policies.json`). The group
+`zeuslock` is kept: `sudo groupdel zeuslock` removes it.
 
 ---
 
-## Upgrading from 1.0.11 or earlier (package was `zeus-desktop-agent`)
+## If something fails
 
-Version 1.0.12 renamed the package to **`zeuslock-desktop-agent`** and the launcher to
-`zeuslock-ai-data-protection`. The new package declares `Replaces`/`Conflicts`/`Provides`
-on the old name, so:
+| Symptom | Fix |
+|---|---|
+| Agent shows **Configuration not readable - ask your administrator** | The user is not in group `zeuslock`, or has not logged in again since: `sudo usermod -aG zeuslock <user>`, then log out and in. |
+| Agent shows **Agent not configured** | `sudo cat /etc/zeuslock/agent.conf` must show `ServerUrl` and `LicenseKey`. Re-run the playbook or the script. |
+| Firefox shows **Warning: Potential Security Risk Ahead** (or Chrome **Your connection is not private**) on AI sites | The password prompt at the agent's first start was cancelled or nobody with admin rights answered it. Quit and reopen the agent with an administrator at hand, approve the prompt, then fully close and reopen the browser (also the Firefox snap). |
+| Playbook fails with `Dependency is not satisfiable: libasound2` | You run an older copy of the playbook that installs with the `apt` module. Use the playbook in this repository (it uses `apt-get`). |
+| No internet after the agent was stopped or crashed | Wait up to 3 minutes, or run the reset in [verify-and-troubleshoot.md](verify-and-troubleshoot.md#network-after-the-agent-stops). |
 
-- `sudo apt install ./zeuslock-desktop-agent_<ver>_<arch>.deb` (what the script and the
-  playbook run) removes `zeus-desktop-agent` and installs the new one in one step.
-  Plain `dpkg -i` will refuse because of the conflict — use `apt install ./file.deb`.
-- The autostart entry (`/etc/xdg/autostart/zeuslock-agent.desktop`) is rewritten with
-  the new `Exec=`; `/etc/zeuslock/agent.conf` is untouched.
-
-## Upgrading from 1.0.12 or earlier (paths were `zeus-dlp`)
-
-Version 1.0.13 renamed the remaining paths:
-
-| | 1.0.12 and earlier | 1.0.13+ |
-|---|---|---|
-| JSON fallback config | `/etc/zeus-dlp/config.json` | `/etc/zeuslock-dlp/config.json` |
-| Per-user data | `~/.config/Zeus DLP Agent/` | `~/.config/ZeusLock DLP Agent/` |
-| Trusted CA | `/usr/local/share/ca-certificates/zeus-dlp-ca.crt` | `/usr/local/share/ca-certificates/zeuslock-dlp-ca.crt` |
-
-`/etc/zeuslock/agent.conf` — the managed config this guide uses — is **unchanged**.
-The agent migrates its per-user directory on first launch, still reads the old JSON
-path as a fallback, and replaces the old CA file with the new one (same certificate,
-no re-trust prompt) the next time it installs trust.
-
-## Removing the agent
-
-```bash
-sudo pkill -f "zeus" || true
-sudo apt-get remove -y zeuslock-desktop-agent   # or: sudo dpkg -r zeuslock-desktop-agent
-sudo rm -f /etc/zeuslock/agent.conf /etc/zeuslock-dlp/config.json
-sudo rm -f /etc/xdg/autostart/zeuslock-agent.desktop
-sudo rm -f /usr/local/share/ca-certificates/zeuslock-dlp-ca.crt && sudo update-ca-certificates --fresh
-sudo rm -f /etc/chromium-browser/policies/managed/zeuslock-dlp-ca.json \
-           /etc/opt/chrome/policies/managed/zeuslock-dlp-ca.json \
-           /etc/brave/policies/managed/zeuslock-dlp-ca.json \
-           /etc/firefox/policies/zeuslock-dlp-ca.crt
-# Firefox: remove the zeuslock-dlp-ca.crt line from /etc/firefox/policies/policies.json
-# (or delete the file if ZeusLock was the only thing in it)
-sudo groupdel zeuslock    # optional: the group that could read the config
-```
+> **Known limits**
+> - Ubuntu Desktop `.deb` only (amd64, arm64); only the GNOME proxy setting is set (KDE's own
+>   proxy setting is not).
+> - The certificate prompt needs an administrator password once per user.
+> - Codex on Linux is not covered.
+> - After the agent is killed or crashes on a desktop that is not managed, the network comes
+>   back after 1 to 3 minutes.

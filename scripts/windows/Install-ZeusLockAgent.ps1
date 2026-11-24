@@ -1,15 +1,21 @@
 <#
 .SYNOPSIS
-    Installs + configures the ZeusLock DLP agent machine-wide. Idempotent.
+    Installs or upgrades the ZeusLock agent from the MSI and writes its managed
+    configuration. Safe to run at every start-up.
 
 .DESCRIPTION
-    Designed to run as a GPO computer Startup script (SYSTEM) or manually as
+    Designed to run as a GPO computer Startup script (SYSTEM) or by hand as
     Administrator. It:
-      1. installs the (per-user) ZeusLock MSI as PER-MACHINE,
-      2. writes the managed config to HKLM\SOFTWARE\Policies\ZeusLock,
-      3. registers the agent to auto-start for any logged-in user.
-    Re-running is safe: it skips the install if the target version is already
-    present, and simply re-asserts the config.
+      1. installs the MSI when the agent is missing, or upgrades it when the MSI on
+         the share is newer than the installed version. The same version is installed
+         again only when it is a different build (the normal MSI vs the On-Device
+         MSI); an equal or newer installed version is otherwise left alone. A copy
+         installed with the Setup .exe is removed first, so the PC ends up with one
+         install;
+      2. writes ServerUrl + LicenseKey to HKLM\SOFTWARE\Policies\ZeusLock.
+    The MSI installs per machine and starts the agent at every sign-in by itself
+    (HKLM\...\Run "ZeusLock Agent"); this script adds nothing for that. An upgrade
+    while the agent runs restarts it in each signed-in session within seconds.
 
 .NOTES
     Fill in the variables below. Nothing else needs editing.
@@ -24,8 +30,11 @@
     so it must be able to read HKLM\SOFTWARE\Policies\ZeusLock. The key's ACL is
     reset to SYSTEM and Administrators (full control) plus INTERACTIVE (read), with
     inheritance removed. Service accounts, network logons and sandboxed (AppContainer)
-    apps can no longer read the license key. The ACL is set before the key is written
-    and re-asserted on every run.
+    apps cannot read the license key. The ACL is set before the key is written and
+    re-asserted on every run.
+
+    Logs: C:\Windows\Temp\ZeusLock-Install.log (this script, never the key) and
+    C:\Windows\Temp\ZeusLock-msi.log (msiexec).
 #>
 
 # ============================ EDIT THESE ============================
@@ -37,17 +46,100 @@ $MsiSource      = "\\DC01\ZeusLockDeploy\ZeusLock.msi"     # UNC path to the sta
 
 $ErrorActionPreference = "Stop"
 $log = "C:\Windows\Temp\ZeusLock-Install.log"
-# Never pass the license key to Log: only the Server URL and ACLs are logged.
-function Log($m) { $ts = Get-Date -Format "s"; Add-Content $log "$ts  $m"; Write-Output $m }
+# Never pass the license key to Log: only the Server URL, versions and ACLs are logged.
+function Log($m) { $ts = Get-Date -Format "s"; Add-Content $log "$ts  $m"; Write-Host $m }
 
-# Well-known SIDs, so this works on any Windows display language.
-$SidSystem      = New-Object System.Security.Principal.SecurityIdentifier("S-1-5-18")
-$SidAdmins      = New-Object System.Security.Principal.SecurityIdentifier("S-1-5-32-544")
-$SidInteractive = New-Object System.Security.Principal.SecurityIdentifier("S-1-5-4")
+$PolicySubKey = "SOFTWARE\Policies\ZeusLock"
+$UninstallRoots = @(
+    "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+    "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
+)
+
+# Every ZeusLock install Windows knows about (MSI, Setup .exe, older product names).
+function Get-ZeusLockInstalls {
+    foreach ($root in $UninstallRoots) {
+        foreach ($item in @(Get-ChildItem -Path $root -ErrorAction SilentlyContinue)) {
+            $p = Get-ItemProperty -Path $item.PSPath -ErrorAction SilentlyContinue
+            if (-not $p -or -not ($p.DisplayName -like "Zeus*AI Data Protection*")) { continue }
+            [pscustomobject]@{
+                Name           = $p.DisplayName
+                Version        = $p.DisplayVersion
+                IsMsi          = ($p.WindowsInstaller -eq 1)
+                ProductCode    = $item.PSChildName
+                QuietUninstall = $p.QuietUninstallString
+                Uninstall      = $p.UninstallString
+            }
+        }
+    }
+}
+
+# "1.0.45" -> [version]; anything unreadable -> $null.
+function ConvertTo-AgentVersion([string]$Text) {
+    if (-not $Text) { return $null }
+    $parsed = $null
+    if ([version]::TryParse($Text.Trim(), [ref]$parsed)) { return $parsed }
+    return $null
+}
+
+# A property inside an MSI file (ProductVersion, ProductCode), read with Windows Installer COM.
+function Get-MsiProperty([string]$Path, [string]$Name) {
+    $installer = New-Object -ComObject WindowsInstaller.Installer
+    $db = $installer.GetType().InvokeMember("OpenDatabase", "InvokeMethod", $null, $installer, @($Path, 0))
+    $view = $db.GetType().InvokeMember("OpenView", "InvokeMethod", $null, $db, @("SELECT Value FROM Property WHERE Property='$Name'"))
+    $view.GetType().InvokeMember("Execute", "InvokeMethod", $null, $view, $null) | Out-Null
+    $record = $view.GetType().InvokeMember("Fetch", "InvokeMethod", $null, $view, $null)
+    $value = $record.GetType().InvokeMember("StringData", "GetProperty", $null, $record, 1)
+    $view.GetType().InvokeMember("Close", "InvokeMethod", $null, $view, $null) | Out-Null
+    return $value
+}
+
+# What to do, from what is installed and the MSI's version and product code:
+#   Remove  = installs that are not the ZeusLock MSI (Setup .exe, older product names)
+#   Install = $true when the MSI must run: nothing installed, an older version, or the
+#             same version from another build (each MSI build has its own product code,
+#             so the same file is never installed twice)
+function Get-InstallPlan($Installed, [version]$MsiVersion, [string]$MsiProductCode) {
+    $Installed = @($Installed | Where-Object { $_ })
+    $msiInstalls = @($Installed | Where-Object { $_.IsMsi -and $_.Name -like "ZeusLock*" })
+    $remove = @($Installed | Where-Object { -not ($_.IsMsi -and $_.Name -like "ZeusLock*") })
+    $current = $null
+    $currentCode = $null
+    foreach ($entry in $msiInstalls) {
+        $v = ConvertTo-AgentVersion $entry.Version
+        if ($v -and (-not $current -or $v -gt $current)) { $current = $v; $currentCode = $entry.ProductCode }
+    }
+    $install = (-not $current) -or ($current -lt $MsiVersion) -or
+        (($current -eq $MsiVersion) -and $MsiProductCode -and ($currentCode -ne $MsiProductCode))
+    [pscustomobject]@{
+        Remove         = $remove
+        Install        = [bool]$install
+        CurrentVersion = $current
+    }
+}
+
+# Silent removal of one install: msiexec for an MSI, the uninstaller for a Setup .exe.
+function Remove-ZeusLockInstall($Entry) {
+    if ($Entry.IsMsi) {
+        $p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList "/x $($Entry.ProductCode) /qn /norestart"
+        return $p.ExitCode
+    }
+    $command = if ($Entry.QuietUninstall) { $Entry.QuietUninstall } else { "$($Entry.Uninstall) /S" }
+    if ($command -notmatch '^\s*"([^"]+)"\s*(.*)$') { throw "Cannot read the uninstall command of $($Entry.Name)" }
+    $p = Start-Process -FilePath $Matches[1] -ArgumentList $Matches[2] -Wait -PassThru
+    return $p.ExitCode
+}
+
+function Install-ZeusLockMsi([string]$LocalMsi, [string]$MsiLog) {
+    $p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList "/i `"$LocalMsi`" /qn /norestart /l*v `"$MsiLog`""
+    return $p.ExitCode
+}
 
 # Replaces the DACL of HKLM\<SubKey>: inheritance removed, SYSTEM + Administrators
 # full control, INTERACTIVE (any logged-on user, where the agent runs) read only.
 function Protect-PolicyKey([string]$SubKey) {
+    $SidSystem      = New-Object System.Security.Principal.SecurityIdentifier("S-1-5-18")
+    $SidAdmins      = New-Object System.Security.Principal.SecurityIdentifier("S-1-5-32-544")
+    $SidInteractive = New-Object System.Security.Principal.SecurityIdentifier("S-1-5-4")
     $rights = [System.Security.AccessControl.RegistryRights]
     $key = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey($SubKey,
         [Microsoft.Win32.RegistryKeyPermissionCheck]::ReadWriteSubTree,
@@ -70,8 +162,8 @@ function Protect-PolicyKey([string]$SubKey) {
     }
 }
 
-# Same restriction for the JSON fallback folder, if it exists (it may hold the key too).
-# Not fatal: a failure here is logged and must not stop autostart registration.
+# Same restriction for the JSON config folder, if it exists (it may hold the key too).
+# Not fatal: a failure here is logged and must not stop the rest.
 function Protect-ConfigFolder([string]$Path) {
     if (-not (Test-Path $Path)) { return }
     & icacls.exe $Path /inheritance:r /grant:r "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" "*S-1-5-4:(OI)(CI)RX" /T /C /Q | Out-Null
@@ -79,80 +171,67 @@ function Protect-ConfigFolder([string]$Path) {
     Log "Permissions on $Path set: SYSTEM + Administrators full, INTERACTIVE read"
 }
 
-try {
-    Log "=== ZeusLock agent install/config starting ==="
-
-    # --- 0. Values -----------------------------------------------------------
-    if ($LicenseKeyPath) {
-        $LicenseKey = (Get-Content -LiteralPath $LicenseKeyPath -TotalCount 1 -ErrorAction Stop).Trim()
-        Log "License key read from $LicenseKeyPath"
-    }
-    if ($ServerUrl -eq "YOUR_SERVER_URL" -or -not $ServerUrl) { throw "ServerUrl is not set (edit the top of the script)" }
-    if ($LicenseKey -eq "YOUR_LICENSE_KEY" -or -not $LicenseKey) { throw "LicenseKey is not set (set `$LicenseKey or `$LicenseKeyPath)" }
-
-    # --- 1. Install (skip if already present) --------------------------------
-    $pkg = Get-Package -Name "*Zeus*" -ErrorAction SilentlyContinue |
-           Where-Object { $_.Name -like "*Zeus*" } | Select-Object -First 1
-    $installDir = "C:\Program Files\ZeusLock - AI Data Protection"   # 1.0.12+; older installs (\Zeus - AI Data Protection) are removed below and replaced
-    $installed  = $pkg -and (Test-Path (Join-Path $installDir "resources\app.asar"))
-
-    if ($installed) {
-        Log "Agent already installed ($($pkg.Name) $($pkg.Version)) - skipping MSI."
-    } else {
-        # Remove any older/partial ZeusLock package first (different UpgradeCodes do
-        # not auto-upgrade).
-        if ($pkg) {
-            Log "Removing existing package $($pkg.Name) $($pkg.Version)"
-            Get-Process | Where-Object { $_.ProcessName -like "*Zeus*" } |
-                Stop-Process -Force -ErrorAction SilentlyContinue
-            Uninstall-Package -Name $pkg.Name -Force -ErrorAction SilentlyContinue | Out-Null
-        }
-
-        # Copy the MSI local (msiexec as SYSTEM is more reliable off a local path).
-        $localMsi = "C:\Windows\Temp\ZeusLock.msi"
-        Log "Copying MSI from $MsiSource"
-        Copy-Item $MsiSource $localMsi -Force
-
-        # Force a PER-MACHINE install of the per-user MSI.
-        $msiLog = "C:\Windows\Temp\ZeusLock-msi.log"
-        Log "Installing (per-machine)..."
-        $p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList `
-            "/i `"$localMsi`" /qn /norestart /l*v `"$msiLog`" ALLUSERS=1 MSIINSTALLPERUSER=`"`""
-        Log "msiexec exit code: $($p.ExitCode)"
-        if ($p.ExitCode -ne 0 -and $p.ExitCode -ne 3010) {
-            throw "MSI install failed (exit $($p.ExitCode)); see $msiLog"
-        }
-    }
-
-    # --- 2. Managed config (HKLM policy scope) -------------------------------
-    $rk = "HKLM:\SOFTWARE\Policies\ZeusLock"
+function Set-ManagedConfig([string]$Url, [string]$Key) {
+    $rk = "HKLM:\$PolicySubKey"
     if (-not (Test-Path $rk)) { New-Item -Path $rk -Force | Out-Null }
     # Restrict the key BEFORE the license key goes in (and re-assert it on every run).
-    Protect-PolicyKey "SOFTWARE\Policies\ZeusLock"
-    New-ItemProperty $rk -Name ServerUrl         -Value $ServerUrl  -PropertyType String -Force | Out-Null
-    New-ItemProperty $rk -Name LicenseKey        -Value $LicenseKey -PropertyType String -Force | Out-Null
-    New-ItemProperty $rk -Name AgentEnabled      -Value 1 -PropertyType DWord -Force | Out-Null
-    New-ItemProperty $rk -Name BlockingEnabled   -Value 1 -PropertyType DWord -Force | Out-Null
-    New-ItemProperty $rk -Name FileMonitoring    -Value 1 -PropertyType DWord -Force | Out-Null
-    New-ItemProperty $rk -Name NetworkMonitoring -Value 1 -PropertyType DWord -Force | Out-Null
-    Log "Wrote managed config to $rk (ServerUrl=$ServerUrl)"
+    Protect-PolicyKey $PolicySubKey
+    New-ItemProperty $rk -Name ServerUrl  -Value $Url -PropertyType String -Force | Out-Null
+    New-ItemProperty $rk -Name LicenseKey -Value $Key -PropertyType String -Force | Out-Null
+    Log "Wrote managed config to $rk (ServerUrl=$Url)"
     Protect-ConfigFolder "C:\ProgramData\ZeusLockDLP"
     Protect-ConfigFolder "C:\ProgramData\ZeusDLP"
+}
 
-    # --- 3. Auto-start for any logged-in user --------------------------------
-    $exe = Join-Path $installDir "ZeusLock - AI Data Protection.exe"
-    if (Test-Path $exe) {
-        New-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" `
-            -Name "ZeusLock Agent" -Value "`"$exe`"" -PropertyType String -Force | Out-Null
-        Log "Autostart registered -> $exe"
-    } else {
-        Log "WARNING: agent exe not found at $exe (autostart not set)"
+function Invoke-Main {
+    try {
+        Log "=== ZeusLock agent install/config starting ==="
+
+        # --- 0. Values -----------------------------------------------------------
+        if ($LicenseKeyPath) {
+            $script:LicenseKey = (Get-Content -LiteralPath $LicenseKeyPath -TotalCount 1 -ErrorAction Stop).Trim()
+            Log "License key read from $LicenseKeyPath"
+        }
+        if ($ServerUrl -eq "YOUR_SERVER_URL" -or -not $ServerUrl) { throw "ServerUrl is not set (edit the top of the script)" }
+        if ($LicenseKey -eq "YOUR_LICENSE_KEY" -or -not $LicenseKey) { throw "LicenseKey is not set (set `$LicenseKey or `$LicenseKeyPath)" }
+
+        # --- 1. Install or upgrade -------------------------------------------------
+        # Copy the MSI local (msiexec as SYSTEM is more reliable off a local path).
+        $localMsi = "C:\Windows\Temp\ZeusLock.msi"
+        Copy-Item $MsiSource $localMsi -Force
+        $msiVersion = ConvertTo-AgentVersion (Get-MsiProperty $localMsi "ProductVersion")
+        if (-not $msiVersion) { throw "Cannot read the version of $MsiSource" }
+        $msiCode = Get-MsiProperty $localMsi "ProductCode"
+        $plan = Get-InstallPlan (Get-ZeusLockInstalls) $msiVersion $msiCode
+        Log "MSI on the share: $msiVersion; installed MSI: $(if ($plan.CurrentVersion) { $plan.CurrentVersion } else { 'none' })"
+
+        foreach ($entry in $plan.Remove) {
+            Log "Removing $($entry.Name) $($entry.Version) first (one install per PC)"
+            $code = Remove-ZeusLockInstall $entry
+            Log "  exit code: $code"
+        }
+
+        if ($plan.Install) {
+            $msiLog = "C:\Windows\Temp\ZeusLock-msi.log"
+            Log "Installing $msiVersion (msiexec log: $msiLog)"
+            $code = Install-ZeusLockMsi $localMsi $msiLog
+            Log "msiexec exit code: $code"
+            if ($code -notin @(0, 1641, 3010)) { throw "MSI install failed (exit $code); see $msiLog" }
+        } else {
+            Log "Installed version $($plan.CurrentVersion) is up to date: nothing to install."
+        }
+
+        # --- 2. Managed config (HKLM policy scope) -------------------------------
+        Set-ManagedConfig $ServerUrl $LicenseKey
+
+        Log "=== ZeusLock agent install/config complete ==="
+        return 0
     }
+    catch {
+        Log "ERROR: $($_.Exception.Message)"
+        return 1
+    }
+}
 
-    Log "=== ZeusLock agent install/config complete ==="
-    exit 0
-}
-catch {
-    Log "ERROR: $($_.Exception.Message)"
-    exit 1
-}
+# Run only when executed, so the functions can be dot-sourced and tested on their own.
+if ($MyInvocation.InvocationName -ne '.') { exit (Invoke-Main) }

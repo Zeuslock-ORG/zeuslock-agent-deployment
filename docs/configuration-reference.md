@@ -1,130 +1,128 @@
-# Configuration Reference
+# Configuration reference
 
-The single source of truth for **how the ZeusLock agent is configured**. Every
-platform guide points here for the exact keys and values. Read the two rules
-below and you can configure the agent on any OS.
+How the ZeusLock agent is configured: where it reads its settings, which source wins, every
+key that works, and how the license key is protected on the computer. Every platform guide
+points here. For agent 1.0.45 or later.
 
 ---
 
-## Rule 1 — where the agent reads configuration (and in what order)
+## Rule 1: where the agent reads its configuration
 
-On startup (and every ~60 s), the agent loads configuration from these sources,
-**highest priority first**:
+The agent reads its configuration at start, and the managed policy again at most once a
+minute. Two places, in this order:
 
-1. **Managed policy scope** (GPO / MDM / managed conf) — the enterprise source.
-   - Windows: Registry key `HKLM\SOFTWARE\Policies\ZeusLock`
-   - macOS: managed-preferences domain `com.zeuslock.agent`
+1. **Managed policy** (GPO / MDM / Ansible). Read first.
+   - Windows: registry key `HKLM\SOFTWARE\Policies\ZeusLock`
+   - macOS: profile for domain `com.zeuslock.agent`
      (`/Library/Managed Preferences/com.zeuslock.agent.plist`)
    - Linux: `/etc/zeuslock/agent.conf`
-2. **Admin config file** (system-wide JSON) — used when the managed scope did not
-   supply a license key:
+2. **Admin config file** (JSON, one computer; the dashboard's **Local agent install** writes it).
+   Used when the managed policy holds no `LicenseKey`.
    - Windows: `C:\ProgramData\ZeusLockDLP\config.json`
    - macOS: `/Library/Application Support/ZeusLockDLP/config.json`
    - Linux: `/etc/zeuslock-dlp/config.json`
-3. **Per-user config file** (a tester without admin rights):
-   `zeuslock-config.json` in the agent's per-user data directory
-   (Windows `%APPDATA%\ZeusLock DLP Agent\`, macOS
-   `~/Library/Application Support/ZeusLock DLP Agent/`, Linux
-   `~/.config/ZeusLock DLP Agent/`).
 
-> **Renamed in 1.0.13.** Before 1.0.13 these were `ZeusDLP` / `zeus-dlp` /
-> `Zeus DLP Agent` / `zeus-config.json`. The old locations are **still read** as a
-> fallback and the per-user directory is migrated automatically on first launch, so
-> upgrades keep their configuration — but write new deployments to the paths above.
+With neither, the agent shows **Agent not configured**.
 
-A key set in a higher source wins. In practice you use **either** the managed
-policy (recommended for fleets) **or** the admin JSON file (simplest for a pilot /
-single machine) — both are fully supported. Using both is fine; the managed
-policy takes precedence per-key.
+**Managed computers.** When the managed policy holds `ServerUrl` or `LicenseKey`, the computer
+is managed: the tray or menu bar has no **Quit**, a watchdog restarts the agent if it is ended,
+and `ManagedUncleanStop` applies. A computer configured only through the JSON file is not
+managed.
 
-> **Why "managed scope" matters:** the agent only treats the enterprise scope as
-> authoritative for keys it *actually read* there. A managed policy that is
-> present but supplies no `LicenseKey` correctly **falls through** to the JSON
-> file rather than leaving the endpoint unconfigured. This means you can safely
-> layer a JSON fallback under an MDM/GPO policy.
+**After a change**, restart the agent (or the computer) so it reads the new values for sure.
+
+> A tester without admin rights can put the same JSON in `zeuslock-config.json` in the agent's
+> data folder (Windows `%APPDATA%\ZeusLock DLP Agent\`, macOS
+> `~/Library/Application Support/ZeusLock DLP Agent/`, Linux `~/.config/ZeusLock DLP Agent/`).
+> It is read only when neither file above exists. Not for fleets.
 
 ---
 
-## Rule 2 — the keys
+## Rule 2: the keys
 
-The two keys that **must** be set to activate an endpoint:
+The two keys that **must** be set:
 
 | Key | Value | Example |
-|-----|-------|---------|
-| `ServerUrl` | Your tenant's API URL | `https://api.zeuslock.ai` |
-| `LicenseKey` | Your org API key (from the dashboard) | `zl_xxxxxxxxxxxxxxxxxxxx` |
+|---|---|---|
+| `ServerUrl` | Your ZeusLock API address | `https://api.zeuslock.ai` (your own server: `https://<your API host>`) |
+| `LicenseKey` | Your organisation's API key (dashboard **API Keys**) | `zl_xxxxxxxxxxxxxxxxxxxx` |
 
-> **Legacy aliases:** in the **JSON file** sources you may instead use `apiUrl` /
-> `apiKey` — they still work but are deprecated; prefer `ServerUrl` / `LicenseKey`
-> so the vocabulary matches the GPO/MDM scope. The managed policy scope uses
-> `ServerUrl` / `LicenseKey` only.
+The server finds your organisation from the key; nothing else is needed.
 
-`OrganizationId` is **not required** — the server resolves your organization from
-the license key automatically.
+### Optional keys
 
-### Optional keys (all have safe defaults)
+You normally set only `ServerUrl` and `LicenseKey`. These change the agent's behaviour on the
+computers that receive them. **Where** says which source the agent reads them from: "policy"
+means the managed policy only (not the JSON file).
 
-You normally set only `ServerUrl` + `LicenseKey`. These are available if you want
-to override behavior centrally:
+| Key | Type | Default | Where | Meaning |
+|---|---|---|---|---|
+| `UiLanguage` | string | not set | policy | Language of everything the agent shows (window, dialogs, tray, notifications, block messages written into AI tools): `fr`, `en`, `es` or `de`. Users cannot change it. Not set: the dashboard's **Settings → Protection → Agent language**, else the user's choice in the agent window, else the computer's language, else English. |
+| `BlockFilesOnAlert` | bool | not set | policy | Forces the dashboard setting **Block file uploads on alert detections** (Settings → Protection) on or off on these computers. |
+| `NetworkMonitoring` | bool | `true` | policy | `false` switches all inspection off: no local proxy, nothing checked. Use only to pause protection on a group of computers. |
+| `ShadowAiDiscovery` | bool | `true` | policy | Local on/off switch for **Shadow AI** discovery (which AI tools are used, metadata only). It runs only when it is also switched on in the dashboard. |
+| `ShadowAiDiscoveryExtraDomains` | string | empty | policy | Extra exact domains (your own AI gateways) for Shadow AI discovery. Comma, semicolon or newline separated. |
+| `ShadowAiDiscoveryExtraWildcardDomains` | string | empty | policy | The same, for whole domains and their subdomains. |
+| `ShadowAiDiscoveryExtraHostPatterns` | string | empty | policy | The same, as host patterns. |
+| `ManagedUncleanStop` | string | `protect` | policy | Managed computers only: what happens when the agent is ended without its own cleanup (killed, crashed). `protect`: the agent is restarted and the browsers have no internet until it runs. `restore-network`: like computers that are not managed, the network comes back after a few minutes, unprotected until the agent starts again. |
+| `UpstreamProxy` | string | `auto` | policy, then JSON | Your existing corporate proxy: `auto`, `off`, `http://host:port` or `http://user:password@host:port`. See [Existing corporate proxy](04-existing-corporate-proxy.md). |
+| `TrustSystemCa` | bool | `true` | policy, then JSON | Trust the OS certificate store for the agent's outbound TLS (needed behind a TLS-inspecting proxy). |
+| `ExtraCaFile` | string | none | policy, then JSON | Path to a PEM bundle of extra CAs to trust. |
+| `ManageSystemProxy` | bool | `true` | policy, then JSON | `false`: the agent never changes the system proxy; your PAC must send AI traffic to `127.0.0.1:9876`. |
+| `AllowContentLogging` | bool | `false` | policy | **Test computers only.** Lets the testing logs record prompt text, file text and file names. No effect while testing logs are off. Never on users' computers. |
 
-| Key | Type | Default | Meaning |
-|-----|------|---------|---------|
-| `OrganizationName` | string | — | Cosmetic label shown in logs/UI |
-| `AgentEnabled` | bool | `true` | Master on/off switch |
-| `BlockingEnabled` | bool | `true` | Enforce blocks (vs. detect-only) |
-| `ClipboardMonitoring` | bool | `true` | Monitor clipboard |
-| `ScreenshotMonitoring` | bool | `true` | Monitor screenshots |
-| `FileMonitoring` | bool | `true` | Monitor file uploads |
-| `NetworkMonitoring` | bool | `true` | Monitor network/AI traffic |
-| `ShadowAiDiscovery` | bool | `true` | Discover unsanctioned AI tools |
-| `AutoUpdate` | bool | `true` | Allow agent self-update |
-| `LogLevel` | string | `info` | `error` \| `warn` \| `info` \| `debug` |
-| `HeartbeatInterval` | number (ms) | `300000` | Check-in interval (5 min) |
-| `RulesSyncInterval` | number (ms) | `3600000` | Policy refresh (1 hr) |
-| `UpstreamProxy` | string | `auto` | Existing corporate proxy: `auto` \| `off` \| proxy URL — see [Existing corporate proxy](04-existing-corporate-proxy.md) (1.0.18+) |
-| `TrustSystemCa` | bool | `true` | Trust the OS certificate store for outbound TLS (1.0.18+) |
-| `ExtraCaFile` | string | — | PEM bundle of additional trusted CAs (1.0.18+) |
-| `ManageSystemProxy` | bool | `true` | `false`: never change system proxy settings (1.0.18+) |
-| `UiLanguage` | string | — | Language of everything the agent shows (window, pop-ups, tray, notifications, block messages in AI tools): `fr` \| `en` \| `es` \| `de`. Users cannot change it. Not set: the organisation's agent language (dashboard **Settings**), else the user's choice, else the computer's language (1.0.39+) |
+The **policy itself** (which data is anonymised or blocked) is not set on the computer: it lives
+in the dashboard (**Policies**). The agent fetches it with the license key and picks up changes
+by itself.
 
-> The **DLP policy itself** (which data types block vs. alert) is **not** set on
-> the endpoint — it lives in your dashboard and is fetched from the server using
-> the license key, then refreshed on `RulesSyncInterval`. Change a rule in the
-> dashboard and every agent picks it up automatically.
+### Reserved keys: no effect
+
+The Windows ADMX template and older templates list these keys. In 1.0.45 the agent reads
+**none** of them; setting them changes nothing. Leave them out.
+
+`AgentEnabled`, `BlockingEnabled`, `AutoUpdate`, `ClipboardMonitoring`, `ScreenshotMonitoring`,
+`FileMonitoring`, `LogLevel`, `HeartbeatInterval`, `RulesSyncInterval`, `OrganizationName`.
+
+There is no automatic update: new versions come with a new installer
+([README, Updates](../README.md#updates)). To pause protection, use `NetworkMonitoring=false`.
 
 ---
 
 ## Value formats per source
 
-The **key names are identical everywhere**; only the *encoding* differs by source.
+The key names are the same everywhere; only the encoding differs.
 
 ### Windows registry (`HKLM\SOFTWARE\Policies\ZeusLock`)
-- String keys → `REG_SZ`
-- Boolean/number keys → `REG_DWORD` (booleans: `1` = true, `0` = false)
+
+Strings are `REG_SZ`. On/off keys are `REG_DWORD` (`1` = on, `0` = off).
 
 ```
-ServerUrl        REG_SZ     https://api.zeuslock.ai
-LicenseKey       REG_SZ     zl_xxxxxxxxxxxxxxxxxxxx
-AgentEnabled     REG_DWORD  0x1
-BlockingEnabled  REG_DWORD  0x1
+ServerUrl    REG_SZ     https://api.zeuslock.ai
+LicenseKey   REG_SZ     zl_xxxxxxxxxxxxxxxxxxxx
+UiLanguage   REG_SZ     fr
 ```
 
-### macOS managed preferences (domain `com.zeuslock.agent`)
-Delivered as an MDM configuration profile (a `.mobileconfig`) whose payload sets
-the domain's keys. Booleans are real `<true/>`/`<false/>`; the agent also accepts
-`1`/`0`. See [scripts/macos/com.zeuslock.agent.mobileconfig](../scripts/macos/com.zeuslock.agent.mobileconfig).
+### macOS profile (domain `com.zeuslock.agent`)
 
-### Linux conf (`/etc/zeuslock/agent.conf`)
-`KEY=VALUE`, one per line. `#` and `;` start comments. Quotes are optional.
+A configuration profile (`.mobileconfig`) whose payload sets the keys. On/off keys are
+`<true/>` / `<false/>` (`1` / `0` also work). Template:
+[scripts/macos/com.zeuslock.agent.mobileconfig](../scripts/macos/com.zeuslock.agent.mobileconfig).
+
+### Linux (`/etc/zeuslock/agent.conf`)
+
+`KEY=VALUE`, one per line. `#` and `;` start comments. Quotes are optional. On/off keys are
+`true` / `false`. Template: [scripts/linux/agent.conf](../scripts/linux/agent.conf).
 
 ```ini
 ServerUrl=https://api.zeuslock.ai
 LicenseKey=zl_xxxxxxxxxxxxxxxxxxxx
-BlockingEnabled=true
+UiLanguage=fr
 ```
 
-### JSON file (all platforms — the fallback sources)
-UTF-8, **no BOM** (a byte-order mark crashes the parser).
+### JSON file (all platforms)
+
+UTF-8, with or without a byte-order mark. `apiUrl` / `apiKey` are still read as old names for
+`ServerUrl` / `LicenseKey`; use the new names.
 
 ```json
 {
@@ -133,72 +131,78 @@ UTF-8, **no BOM** (a byte-order mark crashes the parser).
 }
 ```
 
+On Windows, write it without a byte-order mark as the dashboard command does
+(`[System.IO.File]::WriteAllText(..., (New-Object System.Text.UTF8Encoding($false)))`).
+
 ---
 
 ## Protecting the license key on the endpoint
 
-The license key binds endpoints to your organization, so every place that holds it
-is locked down. One constraint shapes the permissions: **the agent runs in each
-user's session, not as root or SYSTEM**, so the logged-in user's account must keep
-read access. Everything else (service and daemon accounts, network logons,
-sandboxed apps) is shut out. The scripts in this repository set these permissions
-for you, and re-assert them on every run:
+The license key binds computers to your organisation, so every place that holds it is locked
+down. One constraint shapes the permissions: **the agent runs in each user's session, not as
+root or SYSTEM**, so the signed-in user must keep read access. Everything else (service and
+daemon accounts, network logons, sandboxed apps) is shut out. The scripts in this repository
+set these permissions and re-assert them on every run:
 
 | OS | Where the key is | Permissions the scripts set | Who can read it |
-|----|------------------|-----------------------------|-----------------|
-| Windows | `HKLM\SOFTWARE\Policies\ZeusLock` | inheritance removed; SYSTEM + Administrators full control; **INTERACTIVE** read | logged-on users (where the agent runs), administrators, SYSTEM |
-| Windows | `C:\ProgramData\ZeusLockDLP\` (JSON fallback) | the same, set with `icacls` | the same |
-| macOS | `/Library/Application Support/ZeusLockDLP/config.json` | `0640 root:staff`, folder `0750` | local and mobile user accounts (all are in group `staff`), root |
-| macOS | `/Library/Managed Preferences/com.zeuslock.agent.plist` (MDM profile) | written by macOS | managed by macOS; readable by local accounts, like every managed preference |
-| Linux | `/etc/zeuslock/agent.conf` (and JSON fallbacks, if present) | `0640 root:zeuslock`, directory `0750` | members of group `zeuslock` (your desktop users), root |
+|---|---|---|---|
+| Windows | `HKLM\SOFTWARE\Policies\ZeusLock` | inheritance removed; SYSTEM + Administrators full control; **INTERACTIVE** read | signed-in users (where the agent runs), administrators, SYSTEM |
+| Windows | `C:\ProgramData\ZeusLockDLP\` (JSON file) | the same, set with `icacls` | the same |
+| macOS | `/Library/Application Support/ZeusLockDLP/config.json` | `0640 root:staff`, folder `0750` | local and mobile user accounts (all in group `staff`), root |
+| macOS | `/Library/Managed Preferences/com.zeuslock.agent.plist` (profile) | written by macOS | managed by macOS; readable by local accounts, like every managed preference |
+| Linux | `/etc/zeuslock/agent.conf` (and the JSON file, if present) | `0640 root:zeuslock`, folder `0750` | members of group `zeuslock` (your desktop users), root |
 
 What to know:
 
-- **A user who runs the agent can read the key.** The agent needs it, and it runs as
-  that user. Treat the key as an organization credential present on every endpoint:
-  if one leaks, create a new key in the dashboard (**Settings → API Keys**), deploy
-  it, then revoke the old one.
-- **Keep the key out of shared places on the way to the endpoint.** The scripts
-  prompt for the key (input hidden) instead of taking it on the command line. On
-  Windows, a GPO startup script is stored in SYSVOL, which every domain user can
-  read: point the script at a key file only domain computers can read
-  ([Windows guide, A.1](01-windows-gpo.md#a1--edit-the-scripts-values)). With
-  Ansible, keep the key in Ansible Vault.
+- **A user who runs the agent can read the key.** The agent needs it, and it runs as that user.
+  Treat the key as an organisation credential present on every computer: if one leaks, create a
+  new key on the **API Keys** page, deploy it, then **Revoke** the old one.
+- **Keep the key out of shared places on the way.** The scripts ask for the key with hidden
+  input instead of taking it on the command line. On Windows, a GPO startup script is stored in
+  SYSVOL, which every domain user can read: point the script at a key file only domain
+  computers can read ([Windows guide, A.1](01-windows-gpo.md#a1-put-your-values-in-the-script)).
+  With Ansible, keep the key in Ansible Vault.
 - **Linux: users added later** must join the `zeuslock` group
-  (`sudo usermod -aG zeuslock <user>`, effective at their next login), or re-run
-  the playbook. Until then the agent cannot read the configuration for that user
-  ([Linux guide](03-linux.md#33--who-can-read-the-config)).
-- **If you deliver the configuration by other means** (your own scripts, the JSON
-  fallback, a GPO Registry preference), apply the same permissions. Each platform
-  guide shows how.
+  (`sudo usermod -aG zeuslock <user>`, effective at their next login). Until then the agent
+  shows **Configuration not readable - ask your administrator**
+  ([Linux guide](03-linux.md#who-can-read-the-configuration)).
+- **If you deliver the configuration another way** (your own scripts, a GPO Registry
+  preference, the JSON file), apply the same permissions. The agent never changes them itself.
 
 ---
 
-## The installer is generic (why Step 3 exists)
+## The installer is generic
 
-The installer downloaded from the dashboard is the **same file for every
-customer** and contains **no credentials**. This is by design — it means you can
-cache/redistribute one installer and bind machines to your org purely through
-policy. It also means **an install alone does nothing** until `ServerUrl` +
-`LicenseKey` are delivered by one of the sources above.
+The installer from the dashboard is the **same file for every customer** and contains **no
+credentials**. You can cache and redistribute it, and bind computers to your organisation only
+through configuration. It also means **an install alone does nothing** until `ServerUrl` and
+`LicenseKey` arrive from one of the sources above.
 
-On Windows the installer is a **per-user** package; to deploy it machine-wide via
-GPO you force a per-machine install (`ALLUSERS=1 MSIINSTALLPERUSER=""`) — the
-[Windows guide](01-windows-gpo.md) does this for you. macOS `.pkg` and Linux
-`.deb`/`.rpm` install system-wide normally.
+| OS | Installer | Installs |
+|---|---|---|
+| Windows | `ZeusLock-<version>.msi` | per machine, `C:\Program Files\ZeusLock - AI Data Protection\`; silent with `/qn`, no properties; starts at every sign-in |
+| Windows | `ZeusLock-Setup-<version>.exe` | per machine, `C:\Program Files\ZeusLock\ZeusLock - AI Data Protection\`; starts the agent at the end and at every sign-in |
+| macOS | `ZeusLock-<version>-arm64.pkg` / `.dmg` | `/Applications/ZeusLock - AI Data Protection.app`; start at login comes from a LaunchAgent ([macOS guide](02-macos-mdm.md)) |
+| Linux | `zeuslock-desktop-agent_<version>_<arch>.deb` | `/opt/ZeusLock/`, command `zeuslock-ai-data-protection`; starts at every user's login |
+
+On-Device organisations use the On-Device installers from the dashboard **On-Device** page
+(file names with `OnDevice` / `-ondevice`). They take the same configuration.
 
 ---
 
 ## Runtime facts every admin should know
 
-- **The agent runs in the user's interactive session.** It is a tray application
-  that also sets a local inspection proxy (listening on `127.0.0.1:9876`). It must
-  run while a user is **logged in** — it cannot protect a machine with no
-  interactive session (e.g. a locked/logged-out server).
-- **First run registers the endpoint** with the server using the license key; the
-  machine then appears under **Agents** in your dashboard.
-- **Policy is enforced server-side.** The agent forwards inspected content to the
-  server, which applies your organization's policy and returns block/alert/allow.
-- **Changing the bound org:** if you re-point an already-registered endpoint at a
-  different org/key, clear the agent's per-user store so it re-registers cleanly
-  (the platform guides show the exact path).
+- **The agent runs in the user's session.** It is a tray (menu bar) application with a local
+  inspection proxy on `127.0.0.1:9876`. It protects a computer only while a user is signed in.
+- **First start registers the computer** with the server; it then appears under **Agents** in
+  the dashboard.
+- **Where prompts are checked.** In the normal (cloud) mode the agent sends the text it
+  inspects to the ZeusLock server, which applies your policy and answers anonymise, block or
+  allow. If the server cannot be reached, the request is blocked, never sent unchecked. In an
+  **On-Device** organisation the check runs on the computer with ZeusLock Ama, and only the
+  incidents reach the dashboard.
+- **Pointing a computer at another organisation:** change `LicenseKey` (and `ServerUrl` if
+  needed) where you set it, quit the agent, delete the agent's cached registration
+  (`config.json` in its data folder: Windows `%APPDATA%\ZeusLock DLP Agent\`, macOS
+  `~/Library/Application Support/ZeusLock DLP Agent/`, Linux `~/.config/ZeusLock DLP Agent/`),
+  then start it again.

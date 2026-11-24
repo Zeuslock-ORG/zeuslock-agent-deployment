@@ -1,12 +1,14 @@
 Windows Registry Editor Version 5.00
 
-; ZeusLock agent — managed configuration (Windows registry policy scope).
+; ZeusLock agent: managed configuration (Windows registry policy scope).
 ; Fill in YOUR_SERVER_URL and YOUR_LICENSE_KEY below, then either:
 ;   * import on a reference machine:  reg import ZeusLock-Policy.reg
 ;   * or replicate these values via a GPO Registry preference (recommended for
-;     fleets — see docs/01-windows-gpo.md, Method B.2).
+;     fleets: see docs/01-windows-gpo.md, Method B.2).
 ;
-; String values are REG_SZ ("..."); on/off toggles are REG_DWORD (1 = on, 0 = off).
+; A license key here makes the PC "managed": users cannot quit the agent.
+; Optional settings (docs/configuration-reference.md) go in the same key: strings are
+; REG_SZ ("..."), on/off settings REG_DWORD (dword:00000001 = on, dword:00000000 = off).
 ;
 ; The license key is a secret. Importing this file leaves the key with the default
 ; permissions of HKLM\SOFTWARE\Policies (readable by every account on the machine,
@@ -14,17 +16,9 @@ Windows Registry Editor Version 5.00
 ; (read): run Install-ZeusLockAgent.ps1 (Method A does it for you), or push the
 ; permissions with the GPO setting "Security Settings > Registry" - see
 ; docs/01-windows-gpo.md, B.2. Delete your filled-in copy of this file afterwards.
+;
+; Start at sign-in needs nothing here: the MSI adds it (HKLM\...\Run "ZeusLock Agent").
 
 [HKEY_LOCAL_MACHINE\SOFTWARE\Policies\ZeusLock]
 "ServerUrl"="YOUR_SERVER_URL"
 "LicenseKey"="YOUR_LICENSE_KEY"
-"AgentEnabled"=dword:00000001
-"BlockingEnabled"=dword:00000001
-"FileMonitoring"=dword:00000001
-"NetworkMonitoring"=dword:00000001
-"ClipboardMonitoring"=dword:00000001
-
-; Optional: guarantee the tray agent auto-starts machine-wide. Adjust the path if
-; you changed the install location.
-[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Run]
-"ZeusLock Agent"="\"C:\\Program Files\\ZeusLock - AI Data Protection\\ZeusLock - AI Data Protection.exe\""

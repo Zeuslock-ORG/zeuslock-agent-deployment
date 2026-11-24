@@ -1,9 +1,10 @@
 #!/bin/bash
 #
-# ZeusLock agent — manual Linux install + config (single desktop / pilot).
-# Installs the .deb, writes the managed config, and adds a desktop autostart entry.
+# ZeusLock agent: Linux install + managed config (one desktop, or a pilot before Ansible).
+# Installs or upgrades the .deb and writes /etc/zeuslock/agent.conf, the managed
+# configuration (the same file the Ansible playbook writes). Ubuntu Desktop, amd64 or arm64.
 #
-#   Usage:  sudo bash install-zeuslock-agent.sh ./zeuslock-desktop-agent_amd64.deb
+#   Usage:  sudo bash install-zeuslock-agent.sh ./zeuslock-desktop-agent_<version>_amd64.deb
 #
 # The license key is a secret. Leave LICENSE_KEY below as the placeholder and the
 # script asks for it (input hidden), so it never lands in this file, in your shell
@@ -12,21 +13,24 @@
 # Who can read the config: the agent runs in each user's desktop session (not as
 # root), so it must be able to read /etc/zeuslock/agent.conf. The file is written
 # root:<CONFIG_GROUP> 0640 (directory 0750) and the local login accounts are added
-# to that group — system and service accounts cannot read it. Users added later
+# to that group; system and service accounts cannot read it. Users added later
 # need `sudo usermod -aG zeuslock <user>` (see docs/03-linux.md).
+#
+# The package itself starts the agent at every user's login
+# (/etc/xdg/autostart/zeuslock-agent.desktop); this script does not add a second entry.
 #
 set -euo pipefail
 
 # ============================ EDIT THESE ============================
 SERVER_URL="YOUR_SERVER_URL"     # e.g. https://api.zeuslock.ai
 LICENSE_KEY="YOUR_LICENSE_KEY"   # zl_...  (leave as is to be prompted, input hidden)
-ZEUS_EXEC="zeuslock-ai-data-protection"   # launcher command (1.0.12+; was zeus-ai-data-protection)
 CONFIG_GROUP="zeuslock"          # group allowed to read the config; may be an existing
                                  # directory (SSSD/AD) group that holds your desktop users
 # ====================================================================
 
-CONFIG_FILE="/etc/zeuslock/agent.conf"
-# JSON fallbacks the agent also reads; not written here, but tightened if present.
+CONFIG_FILE="${CONFIG_FILE:-/etc/zeuslock/agent.conf}"
+AUTOSTART_FILE="/etc/xdg/autostart/zeuslock-agent.desktop"
+# JSON configs the agent also reads; not written here, but tightened if present.
 JSON_FALLBACKS=("/etc/zeuslock-dlp/config.json" "/etc/zeus-dlp/config.json")
 
 TMP_CONFIG=""
@@ -99,21 +103,17 @@ write_agent_conf() {
   TMP_CONFIG=$(umask 077 && mktemp "$dir/.agent.conf.XXXXXX")
   # printf is a shell builtin: the key is not passed on any command line.
   printf '%s\n' \
-    "# ZeusLock agent — managed configuration (KEY=VALUE)." \
-    "# root:$group 0640 — contains the organisation license key." \
+    "# ZeusLock agent: managed configuration (KEY=VALUE)." \
+    "# root:$group 0640: contains the organisation license key." \
     "ServerUrl=$SERVER_URL" \
-    "LicenseKey=$LICENSE_KEY" \
-    "AgentEnabled=true" \
-    "BlockingEnabled=true" \
-    "NetworkMonitoring=true" \
-    "FileMonitoring=true" > "$TMP_CONFIG"
+    "LicenseKey=$LICENSE_KEY" > "$TMP_CONFIG"
   chown "$owner:$group" "$TMP_CONFIG"
   chmod 0640 "$TMP_CONFIG"
   mv -f "$TMP_CONFIG" "$file"
   TMP_CONFIG=""
 }
 
-# Older installs may carry a world-readable JSON fallback holding the key.
+# Older installs may carry a world-readable JSON config holding the key.
 tighten_json_fallbacks() {
   local owner=$1 group=$2 file
   for file in "${JSON_FALLBACKS[@]}"; do
@@ -126,12 +126,17 @@ tighten_json_fallbacks() {
 }
 
 main() {
-  local deb="${1:?Usage: sudo bash install-zeuslock-agent.sh /path/to/zeuslock-desktop-agent.deb}"
+  local deb="${1:?Usage: sudo bash install-zeuslock-agent.sh ./zeuslock-desktop-agent_<version>_<arch>.deb}"
   if [[ $EUID -ne 0 ]]; then echo "Please run with sudo." >&2; exit 1; fi
+  [[ -f "$deb" ]] || die "No such file: $deb"
+  # apt treats a bare file name as a package name: give it an absolute path.
+  deb=$(readlink -f "$deb")
   read_values
 
   echo "==> Installing $deb"
-  apt-get install -y "$deb" || { dpkg -i "$deb"; apt-get install -f -y; }
+  # Installs, or upgrades an older version in place. Agents already running keep the
+  # old version until the user logs in again.
+  DEBIAN_FRONTEND=noninteractive apt-get install -y "$deb"
 
   echo "==> Config reader group '$CONFIG_GROUP'"
   ensure_config_group "$CONFIG_GROUP"
@@ -140,20 +145,14 @@ main() {
   write_agent_conf "$CONFIG_FILE" root "$CONFIG_GROUP"
   tighten_json_fallbacks root "$CONFIG_GROUP"
 
-  echo "==> Adding desktop autostart entry"
-  mkdir -p /etc/xdg/autostart
-  cat > /etc/xdg/autostart/zeuslock-agent.desktop <<EOF
-[Desktop Entry]
-Type=Application
-Name=ZeusLock Agent
-Exec=$ZEUS_EXEC
-X-GNOME-Autostart-enabled=true
-NoDisplay=true
-EOF
-  chmod 644 /etc/xdg/autostart/zeuslock-agent.desktop
+  if [[ -f "$AUTOSTART_FILE" ]]; then
+    echo "==> Login start: $AUTOSTART_FILE (added by the package)"
+  else
+    echo "WARNING: $AUTOSTART_FILE is missing; the agent will not start at login." >&2
+  fi
 
-  echo "==> Done. Log out/in (needed for the new group membership), then the agent"
-  echo "    starts in your desktop session ('ZeusLock - AI Data Protection')."
+  echo "==> Done. Log out and back in (needed for the new group membership): the agent"
+  echo "    starts in the desktop session ('ZeusLock - AI Data Protection')."
 }
 
 # Run only when executed, so the functions can be sourced and tested on their own.

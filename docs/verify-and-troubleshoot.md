@@ -1,104 +1,230 @@
-# Verify & Troubleshoot
+# Verify and troubleshoot
 
-How to confirm an endpoint is genuinely protected — and how to fix it when it
-isn't. Applies to all platforms.
+How to confirm a computer is protected, where the agent's logs are, what happens to the
+network when the agent stops, and how to fix the common problems. All platforms; agent 1.0.45
+or later.
 
 ---
 
-## The four checks (every platform)
+## The four checks
 
-An endpoint is protected only when **all four** pass. Run them on a target machine
-**with a user logged into the desktop** (the agent runs in the user session).
+A computer is protected only when **all four** pass. Run them **with a user signed in to the
+desktop** (the agent runs in the user's session).
 
 ### 1. Installed
-| OS | Command | Expect |
-|----|---------|--------|
-| Windows | `Get-Package -Name "*Zeus*"` | the agent + version |
-| macOS | `ls -d "/Applications/ZeusLock - AI Data Protection.app"` | the app path |
-| Linux | `dpkg -l \| grep -i zeus` | the package |
+
+| OS | Command | Expected result |
+|---|---|---|
+| Windows | `Get-Package -Name "ZeusLock*" \| Format-Table Name, Version` | `ZeusLock - AI Data Protection`, 1.0.45 or later |
+| macOS | `defaults read "/Applications/ZeusLock - AI Data Protection.app/Contents/Info" CFBundleShortVersionString` | 1.0.45 or later |
+| Linux | `dpkg-query -W zeuslock-desktop-agent` | 1.0.45 or later |
 
 ### 2. Configured (Server URL + license key delivered)
-| OS | Command | Expect |
-|----|---------|--------|
-| Windows | `reg query "HKLM\SOFTWARE\Policies\ZeusLock"` | `ServerUrl` + `LicenseKey` |
-| macOS | `sudo defaults read /Library/Managed\ Preferences/com.zeuslock.agent` | `ServerUrl` + `LicenseKey` |
-| Linux | `sudo cat /etc/zeuslock/agent.conf` | `ServerUrl` + `LicenseKey` |
-| Linux | `stat -c '%a %U:%G' /etc/zeuslock/agent.conf` | `640 root:zeuslock` |
 
-(If you used the JSON fallback instead: Windows `C:\ProgramData\ZeusLockDLP\config.json`,
-macOS `/Library/Application Support/ZeusLockDLP/config.json`, Linux `/etc/zeuslock-dlp/config.json`.)
+| OS | Command | Expected result |
+|---|---|---|
+| Windows | `reg query "HKLM\SOFTWARE\Policies\ZeusLock" /v ServerUrl` | your Server URL |
+| macOS | `sudo defaults read "/Library/Managed Preferences/com.zeuslock.agent" ServerUrl` | your Server URL |
+| Linux | `sudo grep ServerUrl /etc/zeuslock/agent.conf` ; `stat -c '%a %U:%G' /etc/zeuslock/agent.conf` | your Server URL ; `640 root:zeuslock` |
 
-### 3. Running + inspection proxy up
-| OS | Command | Expect |
-|----|---------|--------|
-| Windows | `Get-Process *Zeus*` ; `Get-NetTCPConnection -LocalPort 9876 -State Listen` | process + listener |
-| macOS | `pgrep -fl "ZeusLock - AI Data Protection"` ; `lsof -iTCP:9876 -sTCP:LISTEN` | process + listener |
-| Linux | `pgrep -fa zeus` ; `ss -ltnp \| grep 9876` | process + listener |
+Configured with the JSON file instead (one computer): Windows
+`C:\ProgramData\ZeusLockDLP\config.json`, macOS
+`/Library/Application Support/ZeusLockDLP/config.json`, Linux `/etc/zeuslock-dlp/config.json`.
 
-The agent UI should read **"Protection active"** for the logged-in user.
+### 3. Running, with its proxy up
 
-**Survives a restart:** restart the machine, sign in (also as a second, standard
-user), and **without opening anything** repeat this check — the agent must be
-running in that user's session. On Windows it must not run elevated (Task Manager
-→ Details → *Elevated* = No).
+| OS | Command | Expected result |
+|---|---|---|
+| Windows | `Get-Process "ZeusLock*"` ; `Get-NetTCPConnection -LocalPort 9876 -State Listen` | processes + one listener |
+| macOS | `pgrep -fl "ZeusLock - AI Data Protection"` ; `lsof -iTCP:9876 -sTCP:LISTEN` | processes + one listener |
+| Linux | `pgrep -fa zeuslock-ai-data-protection` ; `ss -ltn \| grep 9876` | processes + one listener |
 
-### 4. Live DLP test
-As a normal user, open the browser → **chatgpt.com** → paste a test secret such as
-`4111 1111 1111 1111`. The agent should flag/block it, and a matching **incident**
-should appear under **Incidents** in your dashboard within a few seconds.
+The tray (Windows), menu bar (macOS) or top bar (Linux) icon shows **Protection active** and
+your organisation's name.
 
-> **Block vs. alert:** whether a data type is *blocked* or merely *alerted* is set
-> by your **policy in the dashboard**, not on the endpoint. If a paste is logged
-> but not blocked, that data type is set to *alert* in your policy — change it to
-> *block* in the dashboard and the agents pick it up automatically.
+**After a restart:** restart the computer, sign in (also as a second, standard user) and,
+without opening anything, repeat this check. The agent must be running in that user's session.
+On Windows it must not run elevated (Task Manager → **Details** → **Elevated** = No).
+
+### 4. Live test
+
+As a normal user, open **chatgpt.com** and send `My card is 4111 1111 1111 1111`.
+
+Expected result: the agent flags or blocks it, and an incident appears under **Incidents** in
+the dashboard within a few seconds.
+
+> Whether a type of data is anonymised or blocked is set by your **policy in the dashboard**
+> (**Policies**), not on the computer. Change it there and the agents pick it up by themselves.
 
 ---
 
-## Troubleshooting (symptom → cause → fix)
+## Logs
+
+The agent's data folder, per user:
+
+| OS | Data folder | Logs |
+|---|---|---|
+| Windows | `%APPDATA%\ZeusLock DLP Agent` | `%APPDATA%\ZeusLock DLP Agent\logs` |
+| macOS | `~/Library/Application Support/ZeusLock DLP Agent` | `~/Library/Application Support/ZeusLock DLP Agent/logs` |
+| Linux | `~/.config/ZeusLock DLP Agent` | `~/.config/ZeusLock DLP Agent/logs` |
+
+**Always written:**
+
+| File | What |
+|---|---|
+| `logs/watchdog.log` | Watchdog restarts of the agent |
+| `logs/cleanup.log` (macOS, Linux) | Network cleanup after the agent was stopped |
+| `logs/cleanup-fallback.log` (Windows) | Network cleanup after an uninstall |
+| `%ProgramData%\ZeusLock\logs\msi-session.log` (Windows) | MSI install, upgrade and removal in users' sessions |
+| `C:\Windows\Temp\ZeusLock-Install.log`, `ZeusLock-msi.log`, `ZeusLock-Uninstall.log` (Windows) | The scripts in this repository |
+
+**Testing logs** (`logs/agent.log` and `logs/requests.jsonl`) are written only when you switch
+them on. Do it on one computer while you investigate:
+
+1. Create an empty file `testing-logs.on` in the data folder (not in `logs`):
+
+   ```powershell
+   # Windows
+   New-Item -ItemType File -Force "$env:APPDATA\ZeusLock DLP Agent\testing-logs.on"
+   ```
+   ```bash
+   # macOS
+   touch ~/Library/Application\ Support/ZeusLock\ DLP\ Agent/testing-logs.on
+   # Linux
+   touch ~/.config/ZeusLock\ DLP\ Agent/testing-logs.on
+   ```
+
+2. Restart the agent: tray icon → **Quit** and open it again, or (managed computers, no
+   **Quit**) sign out and back in.
+
+   Expected result: `logs/agent.log` and `logs/requests.jsonl` appear.
+
+3. Reproduce the problem, then send both files to support.
+4. Delete `testing-logs.on` and restart the agent to switch them off.
+
+Prompt text, file text and file names are recorded only as a length and a fingerprint, unless
+the policy key `AllowContentLogging` is set (test computers only). Each log is kept to 5 files
+of 50 MB.
+
+---
+
+## Network after the agent stops
+
+While it runs, the agent points the system proxy, the Chrome/Edge/Brave proxy policy, Claude
+Code and Cursor at itself (`127.0.0.1:9876`).
+
+- **Quit from the tray, sign-out, shutdown, uninstall:** everything is put back as it was
+  (your company proxy, or none).
+- **Killed or crashed:** AI and web traffic fails until the agent runs again or the cleanup
+  runs. That is deliberate: nothing goes out unchecked.
+  - Windows: the watchdog restarts the agent in about 15–20 seconds; if every ZeusLock process
+    was ended, a cleanup task gives the network back within 3 minutes, or at the next sign-in.
+    During a restart the proxy stays on the agent.
+  - macOS and Linux: a cleanup job gives the network back within 3 minutes (Linux: 1 to 3
+    minutes), or at the next login.
+  - **Managed computers** (`ManagedUncleanStop=protect`, the default): the agent is started again
+    instead, and the network stays on it until it runs.
+
+**Reset by hand** (no admin needed), as the signed-in user:
+
+| OS | Command |
+|---|---|
+| Windows (MSI) | `& "C:\Program Files\ZeusLock - AI Data Protection\ZeusLock - AI Data Protection.exe" --cleanup` |
+| Windows (Setup .exe) | `& "C:\Program Files\ZeusLock\ZeusLock - AI Data Protection\ZeusLock - AI Data Protection.exe" --cleanup` |
+| Windows, agent already uninstalled | `powershell -ExecutionPolicy Bypass -File "$env:APPDATA\ZeusLock DLP Agent\zeuslock-cleanup.ps1"` |
+| Windows, last resort | `reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings" /v ProxyEnable /t REG_DWORD /d 0 /f` |
+| macOS | `"/Applications/ZeusLock - AI Data Protection.app/Contents/MacOS/ZeusLock - AI Data Protection" --cleanup` |
+| Linux | `zeuslock-ai-data-protection --cleanup` |
+
+Expected result: web browsing works again; restart the browser if a page still fails. The
+reset does nothing while the agent runs. On a **managed** Mac or Linux desktop it starts the
+agent instead, which also brings the network back.
+
+---
+
+## Certificate warnings
+
+The agent trusts its own certificate **ZeusLock DLP Proxy CA** at its first start in each
+user's session. If that prompt was cancelled, browsers show **Your connection is not private**
+(Chrome, Edge) or **Warning: Potential Security Risk Ahead** (Firefox) on AI sites.
+
+1. Restart the agent (tray icon → **Quit**, open it again; managed computers: sign out and in)
+   and approve the prompt:
+   - Windows: **Yes** in the **Security Warning** (standard user), or the UAC prompt
+     (administrator).
+   - macOS: the user's password, to trust it in the login keychain.
+   - Linux: an administrator password (**Authentication Required**). It also writes the
+     Chrome/Chromium/Brave and Firefox policies.
+2. Fully close and reopen the browser (on Linux also the Firefox snap).
+
+Expected result: AI sites open without a warning.
+
+If the prompt cannot be approved, an administrator can trust the certificate by hand, in the
+user's session (the commands the dashboard **Local agent install** page shows):
+
+```bash
+# macOS
+sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain "$HOME/Library/Application Support/ZeusLock DLP Agent/certs/zeuslock-ca.crt"
+# Windows (PowerShell as Admin)
+certutil -addstore -f Root "$env:APPDATA\ZeusLock DLP Agent\certs\zeuslock-ca.cer"
+# Linux
+sudo install -D -m 0644 "$HOME/.config/ZeusLock DLP Agent/certs/zeuslock-ca.crt" /usr/local/share/ca-certificates/zeuslock-dlp-ca.crt && sudo update-ca-certificates
+```
+
+On Linux this covers the system store only; Chrome and Firefox also need the browser policies,
+which the agent writes when its prompt is approved.
+
+---
+
+## Troubleshooting
 
 | Symptom | Likely cause | Fix |
-|---------|--------------|-----|
-| Agent installed but **UI says "not configured" / inactive** | Step 3 config not delivered (no `LicenseKey` in the managed scope **or** the JSON file) | Re-check check #2. Ensure the managed policy actually reached the endpoint (GPO: `gpupdate /force`; MDM: re-push profile). Or drop the JSON fallback file. |
-| **"Not configured" although the config is there** (Linux / macOS JSON fallback / Windows) | The agent runs as the logged-in user and cannot read the file or key: Linux user not in group `zeuslock` (or not logged in again since being added); permissions changed by hand | Linux: `sudo usermod -aG zeuslock <user>`, then log out and in. macOS JSON fallback: `0640 root:staff`. Windows: the key needs **INTERACTIVE** read — re-run `Install-ZeusLockAgent.ps1`. See [Protecting the license key](configuration-reference.md#protecting-the-license-key-on-the-endpoint). |
-| **"Invalid license" / agent tries to reach `api.zeuslock.io`** | `ServerUrl` not being read — wrong key name, or config in the wrong location | Confirm the key is exactly `ServerUrl` in the right location (check #2). On Windows, values must be under `HKLM\SOFTWARE\Policies\ZeusLock`. |
-| Config file present but **ignored / parser error** | The JSON/conf file was saved **with a UTF-8 BOM**, or invalid JSON | Re-save as UTF-8 **without BOM**. On Windows use `[IO.File]::WriteAllText($p,$json,(New-Object System.Text.UTF8Encoding($false)))`, never `Set-Content -Encoding UTF8`. |
-| **No tray icon / agent not running**, yet installed | The agent only runs in an **interactive desktop session**; it was "started" with no user logged in | Log in as a normal user. Ensure autostart is set (Windows: `HKLM\...\Run`; macOS: login item; Linux: `/etc/xdg/autostart/`). |
-| **Windows: agent not running after a restart** (manual install) | Setup EXE 1.0.41 or older: auto-start came from a `.bat` wrapper plus a scheduled task that ran the agent *elevated* for the installing administrator | Install 1.0.42 or later (MSI or Setup EXE): one `HKLM\...\Run` value → the agent `.exe`, for every user. Check: `reg query HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run` shows `ZeusLock Agent` (MSI) or `ZeusLock DLP Agent` (Setup EXE); Task Manager → Startup apps shows it **Enabled**; `schtasks /query /tn ZeusLockDLPAgent` finds nothing. |
-| **Windows: agent missing after a GPO reboot** | The MSI is *per-user*; native "Assigned" computer install didn't apply it machine-wide | Use **Method A** (startup script `Install-ZeusLockAgent.ps1`), or add an `.mst` transform setting `ALLUSERS=1 MSIINSTALLPERUSER=""`. |
-| Agent active but **ChatGPT paste not intercepted** | System proxy not routed to the agent, or the agent's proxy CA isn't trusted | Restart the agent inside the user session; confirm the proxy is `LISTENING` on `9876`; ensure the inspection CA is trusted (MDM/GPO can pre-push it). |
-| **Endpoint doesn't appear under "Agents" in the dashboard** | Registration blocked — wrong/expired key, or can't reach the Server URL | Verify the key is valid and `https://<ServerUrl>` is reachable from the endpoint (firewall/proxy). Re-check `LicenseKey`. |
-| Re-pointed to a new org/key but **old org still shows** | Stale per-user store from the previous registration | Clear the per-user config so it re-registers: delete `zeuslock-config.json` / the store in the user's app-data dir (Windows `%APPDATA%\ZeusLock DLP Agent\config.json`, macOS `~/Library/Application Support/ZeusLock DLP Agent/config.json`, Linux `~/.config/ZeusLock DLP Agent/config.json`; before 1.0.13 the folder was `Zeus DLP Agent`), then relaunch. |
-| **macOS: user gets permission prompts** | TCC / login-item / network approvals not pre-granted | Pre-approve via MDM (PPPC + Managed Login Items + Certificate payloads) — see [macOS guide §5](02-macos-mdm.md#5-approvals-the-agent-needs). |
+|---|---|---|
+| Agent shows **Agent not configured** | No `LicenseKey` in the managed policy or the JSON file | Check #2. GPO: `gpupdate /force`; MDM: re-push the profile; Linux: re-run the playbook. Then restart the agent. |
+| Agent shows **Configuration not readable - ask your administrator** | The agent, running as the user, cannot read the file | Linux: `sudo usermod -aG zeuslock <user>`, then log out and in. macOS JSON file: `0640 root:staff`. Windows: re-run `Install-ZeusLockAgent.ps1` (the key needs **INTERACTIVE** read). |
+| Configured, but the computer never appears under **Agents** | Wrong or revoked key, or the computer cannot reach the Server URL | Check the key on the **API Keys** page (status **Active**) and that `ServerUrl` is exactly `https://api.zeuslock.ai` (or your own server) and reachable on 443. |
+| JSON file ignored | Invalid JSON (smart quotes, missing comma) | Re-run the dashboard's command exactly; do not edit the file by hand in a word processor. |
+| Agent not running after a restart | No start at login | Windows: `reg query HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run` shows `ZeusLock Agent` (MSI) or `ZeusLock DLP Agent` (Setup .exe). macOS: `/Library/LaunchAgents/com.zeuslock.agent.plist` exists ([macOS guide](02-macos-mdm.md)). Linux: `/etc/xdg/autostart/zeuslock-agent.desktop` exists. |
+| Agent running, but a ChatGPT test is not caught | The browser was open before the agent started, or the certificate is not trusted | Fully restart the browser. See [Certificate warnings](#certificate-warnings). |
+| No internet after the agent stopped | Proxy still points at the stopped agent | See [Network after the agent stops](#network-after-the-agent-stops). |
+| AI tools blocked with "…has the standard ZeusLock agent. Install the ZeusLock On-Device version…" | The organisation uses ZeusLock On-Device | Deploy the On-Device installer from the dashboard **On-Device** page. |
+| AI tools blocked with "On-device protection needs to reach the ZeusLock server to renew its licence key" | On-Device computer offline for about 30 days | Connect it to the network; the key renews by itself. |
+| AI tools blocked with "On-device protection could not run on this PC" | The computer cannot run ZeusLock Ama | Check the PC on the dashboard **On-Device** page (**Too weak**, **Model problem**). |
+| Agent shows the wrong organisation | An older registration is cached | Quit the agent, delete `config.json` in its data folder ([Logs](#logs) table), open it again. |
 
 ---
 
 ## Collect diagnostics for support
 
-If you're still stuck, gather this and send it to ZeusLock support (it contains no
-secrets beyond your own config, which you can redact):
+Run these on the computer and send the output, with the OS version, your deployment method
+(GPO / Intune / MDM / Ansible / by hand) and **which of the four checks fails**. They do not
+print the license key.
 
-**Windows**
+**Windows** (PowerShell as Administrator)
 ```powershell
-Get-Package -Name "*Zeus*" | Format-List Name,Version
-reg query "HKLM\SOFTWARE\Policies\ZeusLock"
-Get-Process *Zeus* | Format-Table ProcessName,Id
+Get-Package -Name "ZeusLock*" | Format-List Name, Version
+reg query "HKLM\SOFTWARE\Policies\ZeusLock" | Select-String -NotMatch "LicenseKey"
+Get-Process "ZeusLock*" | Format-Table ProcessName, Id, SessionId
 Get-NetTCPConnection -LocalPort 9876 -State Listen -ErrorAction SilentlyContinue
-Get-Content C:\Windows\Temp\ZeusLock-Install.log -Tail 30   # if you used Method A
+Get-Content C:\Windows\Temp\ZeusLock-Install.log -Tail 30 -ErrorAction SilentlyContinue
+Get-ChildItem "C:\Users\*\AppData\Roaming\ZeusLock DLP Agent\logs" -ErrorAction SilentlyContinue
 ```
 
 **macOS**
 ```bash
-ls -d "/Applications/ZeusLock - AI Data Protection.app"
-sudo defaults read /Library/Managed\ Preferences/com.zeuslock.agent 2>/dev/null
+defaults read "/Applications/ZeusLock - AI Data Protection.app/Contents/Info" CFBundleShortVersionString
+sudo defaults read "/Library/Managed Preferences/com.zeuslock.agent" | grep -v LicenseKey
+ls -l /Library/LaunchAgents/com.zeuslock.agent.plist
 pgrep -fl "ZeusLock - AI Data Protection"; lsof -iTCP:9876 -sTCP:LISTEN
+tail -30 ~/Library/Application\ Support/ZeusLock\ DLP\ Agent/logs/*.log
 ```
 
 **Linux**
 ```bash
-dpkg -l | grep -i zeus
-sudo cat /etc/zeuslock/agent.conf
-pgrep -fa zeus; ss -ltnp | grep 9876
+dpkg-query -W zeuslock-desktop-agent
+sudo grep -v LicenseKey /etc/zeuslock/agent.conf; stat -c '%a %U:%G' /etc/zeuslock/agent.conf
+id -nG; pgrep -fa zeuslock-ai-data-protection; ss -ltn | grep 9876
+tail -30 ~/.config/ZeusLock\ DLP\ Agent/logs/*.log
 ```
 
-Always include: the OS/version, your deployment method (GPO / MDM / Ansible /
-manual), and **which of the four checks fails**.
+If support asks for them, add `agent.log` and `requests.jsonl` from the [testing logs](#logs).
