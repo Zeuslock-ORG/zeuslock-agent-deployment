@@ -174,8 +174,16 @@ function Invoke-Main {
         Remove-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" -Name $runValue -Force -ErrorAction SilentlyContinue
     }
     Remove-ZeusLockCertificates
-    Remove-Item "C:\ProgramData\ZeusLockDLP", "C:\ProgramData\ZeusDLP" -Recurse -Force -ErrorAction SilentlyContinue
-    Log "JSON configuration removed (C:\ProgramData\ZeusLockDLP)"
+    foreach ($dir in "C:\ProgramData\ZeusLockDLP", "C:\ProgramData\ZeusDLP") {
+        if (-not (Test-Path -LiteralPath $dir)) { continue }
+        # Take the folder back first: an older install script could leave files with no
+        # access rule at all, which even an administrator cannot delete as is.
+        & takeown.exe /F $dir /R /A /D Y 2>&1 | Out-Null
+        & icacls.exe $dir /reset /T /C /Q 2>&1 | Out-Null
+        Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue
+        if (Test-Path -LiteralPath $dir) { Log "WARNING: could not remove $dir; delete it by hand" }
+        else { Log "JSON configuration removed ($dir)" }
+    }
 
     Log "=== ZeusLock agent uninstall complete ==="
     return 0

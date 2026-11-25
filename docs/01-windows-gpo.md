@@ -41,8 +41,9 @@ What the MSI does: it installs **per machine** into
 `C:\Program Files\ZeusLock - AI Data Protection\`, takes **no properties** and needs no
 transform, starts the agent at every user's sign-in (`HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run`,
 value `ZeusLock Agent`), and turns off QUIC (HTTP/3) in Chrome, Edge and Brave
-(`QuicAllowed=0`), which would bypass the agent. A silent install does not start the agent: it
-starts at the next sign-in. The MSI carries no credentials.
+(`QuicAllowed=0`), which would bypass the agent. It also starts the agent at once in every
+signed-in session and adds a desktop shortcut. The MSI carries no credentials: write the policy
+before (or with) the install, so the agent starts managed.
 
 ## 3. Put the MSI on a share
 
@@ -278,6 +279,15 @@ The script removes the configuration, stops the agent, gives each signed-in user
 ZeusLock install, and removes the certificate from the machine store. Users who were not signed
 in get their network settings back automatically at their next sign-in. Log:
 `C:\Windows\Temp\ZeusLock-Uninstall.log`.
+
+- **Run as a startup script (SYSTEM):** no prompt; done in about 10 seconds. Each user's own copy
+  of the certificate stays in that user's store (harmless once the agent is gone). To remove it,
+  the user runs `certutil -user -delstore Root "ZeusLock DLP Proxy CA"` and answers **Yes**.
+- **Run by hand as Administrator:** Windows asks **Root Certificate Store — Do you want to DELETE
+  the following certificate from the Root Store?** once or twice → **Yes**. The script waits for
+  the answer.
+- A plain `msiexec /x` (or **Settings → Apps → Uninstall**) of the MSI also gives the network back,
+  but leaves the certificate in the user's store: remove it with the `certutil` line above.
 
 ---
 

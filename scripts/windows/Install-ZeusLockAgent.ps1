@@ -166,8 +166,15 @@ function Protect-PolicyKey([string]$SubKey) {
 # Not fatal: a failure here is logged and must not stop the rest.
 function Protect-ConfigFolder([string]$Path) {
     if (-not (Test-Path $Path)) { return }
-    & icacls.exe $Path /inheritance:r /grant:r "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" "*S-1-5-4:(OI)(CI)RX" /T /C /Q | Out-Null
+    # The folder gets the explicit rules (inheritable to its files); the files then just
+    # inherit them. (Applying "(OI)(CI)" grants to the files themselves with /T leaves
+    # each file with inheritance removed and NO rule at all: nothing can read it.)
+    & icacls.exe $Path /inheritance:r /grant:r "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" "*S-1-5-4:(OI)(CI)RX" /C /Q | Out-Null
     if ($LASTEXITCODE -ne 0) { Log "WARNING: icacls failed on $Path (exit $LASTEXITCODE); permissions unchanged"; return }
+    if (Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue) {
+        & icacls.exe (Join-Path $Path '*') /reset /T /C /Q | Out-Null
+        if ($LASTEXITCODE -ne 0) { Log "WARNING: icacls /reset failed under $Path (exit $LASTEXITCODE)" }
+    }
     Log "Permissions on $Path set: SYSTEM + Administrators full, INTERACTIVE read"
 }
 
@@ -195,7 +202,13 @@ function Invoke-Main {
         if ($ServerUrl -eq "YOUR_SERVER_URL" -or -not $ServerUrl) { throw "ServerUrl is not set (edit the top of the script)" }
         if ($LicenseKey -eq "YOUR_LICENSE_KEY" -or -not $LicenseKey) { throw "LicenseKey is not set (set `$LicenseKey or `$LicenseKeyPath)" }
 
-        # --- 1. Install or upgrade -------------------------------------------------
+        # --- 1. Managed config (HKLM policy scope) -------------------------------
+        # Written BEFORE the install: the MSI starts the agent at once in every signed-in
+        # session, and an agent that starts without the policy runs unmanaged until its
+        # next restart.
+        Set-ManagedConfig $ServerUrl $LicenseKey
+
+        # --- 2. Install or upgrade -------------------------------------------------
         # Copy the MSI local (msiexec as SYSTEM is more reliable off a local path).
         $localMsi = "C:\Windows\Temp\ZeusLock.msi"
         Copy-Item $MsiSource $localMsi -Force
@@ -220,9 +233,6 @@ function Invoke-Main {
         } else {
             Log "Installed version $($plan.CurrentVersion) is up to date: nothing to install."
         }
-
-        # --- 2. Managed config (HKLM policy scope) -------------------------------
-        Set-ManagedConfig $ServerUrl $LicenseKey
 
         Log "=== ZeusLock agent install/config complete ==="
         return 0
