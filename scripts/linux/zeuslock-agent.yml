@@ -1,5 +1,7 @@
 ---
-# ZeusLock agent — Ansible deployment for Debian/Ubuntu desktops.
+# ZeusLock agent: Ansible deployment for Ubuntu desktops (amd64 or arm64).
+# Installs or upgrades the .deb and writes the managed configuration
+# /etc/zeuslock/agent.conf. Re-run it with a newer .deb to upgrade.
 #
 #   ansible-playbook -i inventory.ini zeuslock-agent.yml --ask-become-pass
 #
@@ -14,6 +16,9 @@
 # root), so /etc/zeuslock/agent.conf is root:<zeus_config_group> 0640 (directory
 # 0750) and the desktop users are made members of that group. System and service
 # accounts cannot read the license key. Re-run the playbook after adding users.
+#
+# The package starts the agent at every user's login
+# (/etc/xdg/autostart/zeuslock-agent.desktop); the playbook adds nothing for that.
 
 - name: Deploy ZeusLock DLP agent
   hosts: zeus_endpoints
@@ -22,8 +27,7 @@
   vars:
     zeus_server_url: "YOUR_SERVER_URL"                 # https://api.zeuslock.ai
     zeus_license_key: "YOUR_LICENSE_KEY"               # zl_...
-    zeus_deb_src: "./zeuslock-desktop-agent_amd64.deb"  # path on the control node
-    zeus_exec: "zeuslock-ai-data-protection"           # launcher command (1.0.12+; was zeus-ai-data-protection)
+    zeus_deb_src: "./zeuslock-desktop-agent_1.0.45_amd64.deb"  # path on the control node (arm64 PCs: the _arm64.deb)
     zeus_config_group: "zeuslock"   # group allowed to read the config (may be an existing SSSD/AD group)
     zeus_config_users: []           # users to add to it; empty = every local login account (UID_MIN..UID_MAX, real shell)
 
@@ -34,17 +38,29 @@
         dest: /tmp/zeuslock-agent.deb
         mode: "0644"
 
-    - name: Install the agent package
-      ansible.builtin.apt:
-        deb: /tmp/zeuslock-agent.deb
-        state: present
-      # 'apt deb:' resolves dependencies from the configured repos.
+    # Installs, or upgrades when the .deb is newer. apt-get, not the apt module's `deb:`:
+    # on Ubuntu 24.04 the module refuses the package ("Dependency is not satisfiable:
+    # libasound2", a name 24.04 only provides virtually); apt-get resolves it.
+    - name: Install or upgrade the agent package
+      ansible.builtin.command: apt-get install -y /tmp/zeuslock-agent.deb
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+      register: zeus_apt
+      changed_when: "'Setting up zeuslock-desktop-agent' in zeus_apt.stdout"
 
-    - name: Ensure the config reader group exists
+    # getent also sees directory (SSSD/AD) groups: never create a local copy of one.
+    - name: Check whether the config reader group exists
+      ansible.builtin.command: getent group "{{ zeus_config_group }}"
+      register: zeus_group_known
+      changed_when: false
+      failed_when: false
+
+    - name: Create the config reader group
       ansible.builtin.group:
         name: "{{ zeus_config_group }}"
         system: true
         state: present
+      when: zeus_group_known.rc != 0
 
     # A directory (SSSD/AD) group is used as is: its membership is the directory's job.
     - name: Check whether the config reader group is a local group
@@ -90,13 +106,9 @@
         group: "{{ zeus_config_group }}"
         mode: "0640"
         content: |
-          # ZeusLock agent — managed configuration (KEY=VALUE).
+          # ZeusLock agent: managed configuration (KEY=VALUE).
           ServerUrl={{ zeus_server_url }}
           LicenseKey={{ zeus_license_key }}
-          AgentEnabled=true
-          BlockingEnabled=true
-          NetworkMonitoring=true
-          FileMonitoring=true
       no_log: true
       diff: false
 
@@ -118,23 +130,16 @@
       loop_control:
         label: "{{ item.stat.path }}"
 
-    - name: Ensure the autostart directory exists
+    - name: Tighten their folders too
       ansible.builtin.file:
-        path: /etc/xdg/autostart
+        path: "{{ item.stat.path | dirname }}"
         state: directory
-        mode: "0755"
-
-    - name: Add desktop autostart entry (starts the agent in each user's session)
-      ansible.builtin.copy:
-        dest: /etc/xdg/autostart/zeuslock-agent.desktop
-        mode: "0644"
-        content: |
-          [Desktop Entry]
-          Type=Application
-          Name=ZeusLock Agent
-          Exec={{ zeus_exec }}
-          X-GNOME-Autostart-enabled=true
-          NoDisplay=true
+        owner: root
+        group: "{{ zeus_config_group }}"
+        mode: "0750"
+      loop: "{{ zeus_json_fallbacks.results | selectattr('stat.exists') | list }}"
+      loop_control:
+        label: "{{ item.stat.path | dirname }}"
 
     - name: Clean up the staged package
       ansible.builtin.file:

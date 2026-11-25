@@ -1,10 +1,12 @@
 #!/bin/bash
 #
-# ZeusLock agent — manual macOS install + config (single Mac / pilot).
-# Mounts the downloaded .dmg, installs the app to /Applications, and writes the
-# admin config file. Run with sudo.
+# ZeusLock agent: macOS install + config (one Mac, or a pilot before the MDM rollout).
+# Installs or upgrades the app from the downloaded .pkg or .dmg, writes the admin config
+# file, and adds the start-at-login LaunchAgent (install-launchagent.sh, next to this
+# script). Apple silicon Macs. Run with sudo.
 #
-#   Usage:  sudo bash install-zeuslock-agent.sh /path/to/ZeusLock.dmg
+#   Usage:  sudo bash install-zeuslock-agent.sh /path/to/ZeusLock-<version>-arm64.pkg
+#           sudo bash install-zeuslock-agent.sh /path/to/ZeusLock-<version>-arm64.dmg
 #
 # The license key is a secret. Leave LICENSE_KEY below as the placeholder and the
 # script asks for it (input hidden), so it never lands in this file, in your shell
@@ -23,9 +25,10 @@ LICENSE_KEY="YOUR_LICENSE_KEY"   # zl_...  (leave as is to be prompted, input hi
 # =======================================================================
 
 APP_NAME="ZeusLock - AI Data Protection.app"
-OLD_APP_NAME="Zeus - AI Data Protection.app"   # name before 1.0.12 — removed on upgrade
-CONFIG_DIR="/Library/Application Support/ZeusLockDLP"
+OLD_APP_NAME="Zeus - AI Data Protection.app"   # older bundle name, removed if present
+CONFIG_DIR="${CONFIG_DIR:-/Library/Application Support/ZeusLockDLP}"
 CONFIG_GROUP="staff"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 MOUNT=""
 TMP_CONFIG=""
@@ -76,40 +79,62 @@ write_config_json() {
   TMP_CONFIG=""
 }
 
-main() {
-  local dmg="${1:?Usage: sudo bash install-zeuslock-agent.sh /path/to/ZeusLock.dmg}"
-  if [[ $EUID -ne 0 ]]; then echo "Please run with sudo." >&2; exit 1; fi
-  read_values
+# A running agent (an upgrade) is stopped before its files are replaced. On a managed
+# Mac the agent refuses to quit, so it is ended; it starts again from the LaunchAgent.
+stop_running_agent() {
+  local name
+  for name in "$APP_NAME" "$OLD_APP_NAME"; do
+    pgrep -f "/Applications/$name/" >/dev/null 2>&1 || continue
+    echo "==> Stopping the running agent ($name)"
+    pkill -f "/Applications/$name/" 2>/dev/null || true
+    sleep 2
+    pkill -9 -f "/Applications/$name/" 2>/dev/null || true
+  done
+}
 
-  echo "==> Mounting $dmg"
-  MOUNT=$(hdiutil attach "$dmg" -nobrowse -noverify | awk -F'\t' '/\/Volumes\//{print $NF}' | tail -1)
-
-  local src="$MOUNT/$APP_NAME"
-  [[ -d "$src" ]] || die "Could not find '$APP_NAME' in the DMG."
-
-  echo "==> Installing to /Applications"
-  # Upgrade from a pre-1.0.12 install: the bundle was called "Zeus - AI Data
-  # Protection.app". Quit it and remove it so only the new bundle remains
-  # (bundle id com.zeuslock.desktop-agent is unchanged, so login-item / MDM
-  # approvals carry over).
+install_app() {
+  local installer_file=$1
+  case "$installer_file" in
+    *.pkg)
+      echo "==> Installing $installer_file"
+      installer -pkg "$installer_file" -target / ;;
+    *.dmg)
+      echo "==> Mounting $installer_file"
+      MOUNT=$(hdiutil attach "$installer_file" -nobrowse -noverify | awk -F'\t' '/\/Volumes\//{print $NF}' | tail -1)
+      [[ -d "$MOUNT/$APP_NAME" ]] || die "Could not find '$APP_NAME' in the DMG."
+      echo "==> Copying the app to /Applications"
+      rm -rf "/Applications/$APP_NAME"
+      cp -R "$MOUNT/$APP_NAME" "/Applications/" ;;
+    *)
+      die "Expected a .pkg or a .dmg: $installer_file" ;;
+  esac
+  [[ -d "/Applications/$APP_NAME" ]] || die "The app is not in /Applications after the install."
   if [[ -d "/Applications/$OLD_APP_NAME" ]]; then
-    echo "==> Removing previous '$OLD_APP_NAME'"
-    pkill -f "$OLD_APP_NAME" 2>/dev/null || true
+    echo "==> Removing the old '$OLD_APP_NAME'"
     rm -rf "/Applications/$OLD_APP_NAME"
   fi
-  rm -rf "/Applications/$APP_NAME"
-  cp -R "$src" "/Applications/"
+}
+
+main() {
+  local installer_file="${1:?Usage: sudo bash install-zeuslock-agent.sh /path/to/ZeusLock-<version>-arm64.pkg (or .dmg)}"
+  if [[ $EUID -ne 0 ]]; then echo "Please run with sudo." >&2; exit 1; fi
+  [[ -f "$installer_file" ]] || die "No such file: $installer_file"
+  [[ -f "$SCRIPT_DIR/install-launchagent.sh" ]] || die "install-launchagent.sh must sit next to this script."
+  read_values
+
+  stop_running_agent
+  install_app "$installer_file"
 
   echo "==> Writing config to $CONFIG_DIR/config.json (0640 root:$CONFIG_GROUP)"
   write_config_json "$CONFIG_DIR" root "$CONFIG_GROUP"
-
-  # Upgrade from a pre-1.0.13 install: the admin config lived in ZeusDLP/. The
-  # agent still reads it as a fallback, so remove it — one config file, one truth.
+  # An older admin config path is still read as a fallback: one config file only.
   rm -f "/Library/Application Support/ZeusDLP/config.json"
   rmdir "/Library/Application Support/ZeusDLP" 2>/dev/null || true
 
-  echo "==> Done. Launch 'ZeusLock - AI Data Protection' from Applications and complete"
-  echo "    any first-run approval prompts (login item, proxy trust)."
+  bash "$SCRIPT_DIR/install-launchagent.sh"
+
+  echo "==> Done. At its first start the agent asks to trust its certificate: approve it"
+  echo "    with your password. The menu bar icon then shows 'Protection active'."
 }
 
 # Run only when executed, so the functions can be sourced and tested on their own.

@@ -1,14 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  ZeusLock agent — macOS managed configuration profile.
+  ZeusLock agent: macOS managed configuration profile.
 
-  Sets managed preferences for the domain `com.zeuslock.agent`, which the agent
-  reads as its highest-priority (managed) config scope. Upload this .mobileconfig
-  to your MDM as a Configuration Profile / Custom Settings and scope it to your Macs.
+  Sets managed preferences for the domain `com.zeuslock.agent`. macOS writes them to
+  /Library/Managed Preferences/com.zeuslock.agent.plist, which the agent reads first;
+  a license key there makes the Mac "managed" (users cannot quit the agent).
+  Upload this .mobileconfig to your MDM as a Configuration Profile / Custom Settings
+  and scope it to your Macs.
 
   BEFORE UPLOADING: replace YOUR_SERVER_URL and YOUR_LICENSE_KEY below.
-  (The PayloadUUID/PayloadIdentifier values are placeholders — most MDMs regenerate
-  them on import; if yours doesn't, replace them with your own UUIDs.)
+  Optional keys (see docs/configuration-reference.md) go next to them, for example
+  <key>UiLanguage</key><string>fr</string>.
+  The two PayloadUUID values are placeholders: most MDMs replace them on import; if
+  yours does not, put in your own (run `uuidgen` twice).
 -->
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -32,14 +36,6 @@
       <string>YOUR_SERVER_URL</string>
       <key>LicenseKey</key>
       <string>YOUR_LICENSE_KEY</string>
-      <key>AgentEnabled</key>
-      <true/>
-      <key>BlockingEnabled</key>
-      <true/>
-      <key>NetworkMonitoring</key>
-      <true/>
-      <key>FileMonitoring</key>
-      <true/>
     </dict>
   </array>
   <key>PayloadDisplayName</key>

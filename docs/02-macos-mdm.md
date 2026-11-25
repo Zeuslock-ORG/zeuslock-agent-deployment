@@ -1,213 +1,176 @@
-# macOS — MDM Deployment (Jamf, Mosyle, Kandji, Intune)
+# macOS: deploy with an MDM (Jamf Pro, Mosyle, Kandji, Intune)
 
-Deploy the ZeusLock agent to your Macs and bind them to your organization using
-your MDM. The same two ingredients as every platform: **install the app**, then
-**deliver the config** (a managed-preferences profile for domain
-`com.zeuslock.agent`).
+Deploy the ZeusLock agent to your Macs and bind them to your organisation with your MDM: one
+package, one start-at-login script and one configuration profile. Pilot on one Mac first. For
+agent 1.0.45 or later.
 
-> ℹ️ The **configuration mechanism** below (managed-preferences domain
-> `com.zeuslock.agent`, and the JSON fallback at
-> `/Library/Application Support/ZeusLockDLP/config.json`) is read directly by the
-> agent and is exact. The **install/MDM upload** steps are standard macOS practice
-> — run a **pilot on one Mac** (the [Manual section](#manual-install-single-mac))
-> before a fleet push.
+**Steps:**
+1. [Requirements](#1-requirements)
+2. [Get your values and the package](#2-get-your-values-and-the-package)
+3. [Deploy the package and the start-at-login script](#3-deploy-the-package-and-the-start-at-login-script)
+4. [Push the configuration profile](#4-push-the-configuration-profile)
+5. [Verify](#5-verify)
 
-**You'll do:**
-1. [Prerequisites](#1-prerequisites)
-2. [Get your values + the installer](#2-get-your-values--the-installer)
-3. [Deploy the app via MDM](#3-deploy-the-app-via-mdm)
-4. [Push the config profile](#4-push-the-config-profile-the-important-part)
-5. [Approvals the agent needs](#5-approvals-the-agent-needs)
-6. [Verify](#6-verify) · [Manual install](#manual-install-single-mac)
+Also: [One Mac without MDM](#one-mac-without-mdm) · [Upgrade](#upgrade) ·
+[Remove](#remove-the-agent) · [If something fails](#if-something-fails)
 
 ---
 
-## 1. Prerequisites
+## 1. Requirements
 
-- Macs enrolled in your MDM (Jamf Pro, Mosyle, Kandji, Microsoft Intune, …).
-- Endpoints can reach your **Server URL** over HTTPS (443).
-- Your **Server URL** + **License key** ([main guide, Step 1](../README.md#before-you-start--get-your-two-values-step-1)).
+- Macs with **Apple silicon** (M1 or later), enrolled in your MDM.
+- The Macs reach your Server URL over HTTPS (443).
+- Your **Server URL** and **license key** (`zl_…`):
+  [main guide, Step 1](../README.md#step-1-get-your-two-values).
 
----
+## 2. Get your values and the package
 
-## 2. Get your values + the installer
+In the dashboard: **Agents** → **Download Agent** → macOS.
 
-Download the macOS installer from your dashboard (**Agents → Download**, macOS).
-You'll get a `.dmg` containing **ZeusLock - AI Data Protection.app**.
+Expected result: `ZeusLock-<version>-arm64.pkg` (for the MDM) or `ZeusLock-<version>-arm64.dmg`.
+Both are signed and notarised by Apple; upload the `.pkg` as it is, do not repackage it. It
+installs `/Applications/ZeusLock - AI Data Protection.app` and carries no credentials.
 
-> For MDM fleet deployment, most tools deploy a **`.pkg`**. If your MDM can only
-> deploy a `.pkg`, wrap the `.app` from the DMG into a component package (e.g.
-> `pkgbuild --component "/path/ZeusLock - AI Data Protection.app" --install-location
-> /Applications ZeusLock.pkg`), or use your MDM's "package a .app" / Composer
-> workflow. Jamf/Kandji/Mosyle all support uploading a `.pkg`.
+## 3. Deploy the package and the start-at-login script
 
-The app is **generic** — no embedded credentials. Binding happens in
-[Step 4](#4-push-the-config-profile-the-important-part).
+The app does not register itself to start at login. Your MDM delivers that with
+[scripts/macos/install-launchagent.sh](../scripts/macos/install-launchagent.sh): it writes the
+LaunchAgent `/Library/LaunchAgents/com.zeuslock.agent.plist`, which starts the agent in every
+user's session at login, and starts it now for the user who is signed in.
 
----
+1. Upload the `.pkg` and add the script, run as root **after** the package:
+   - **Jamf Pro:** **Settings → Computer Management → Packages** → upload the `.pkg`.
+     **Settings → Computer Management → Scripts → New** → paste `install-launchagent.sh`.
+     **Computers → Policies → New**: trigger **Enrollment Complete** and **Recurring Check-in**,
+     frequency **Once per computer**, payload **Packages** (the `.pkg`, **Install**) and
+     **Scripts** (the script, priority **After**) → scope to a pilot group → **Save**.
+   - **Kandji:** **Library → Add new → Custom App** → upload the `.pkg` (installation type
+     **Installer package**) → paste the script in **Post-install script** → assign to a
+     Blueprint.
+   - **Mosyle:** **Management → Custom Apps** → upload the `.pkg`; **Management → Custom
+     Commands** → paste the script, run after the app install → assign to the device group.
+   - **Intune:** **Apps → macOS → Add → macOS app (PKG)** → upload the `.pkg` → paste the
+     script as the **Post-install script** → assign.
+2. Wait for the pilot Mac to check in.
 
-## 3. Deploy the app via MDM
+Expected result: on the Mac, `/Applications/ZeusLock - AI Data Protection.app` and
+`/Library/LaunchAgents/com.zeuslock.agent.plist` exist.
 
-Upload the `.pkg` (or `.app`) to your MDM and scope it to the target Macs:
+## 4. Push the configuration profile
 
-- **Jamf Pro:** upload the `.pkg` to a Distribution Point → create a **Policy**
-  (Trigger: Enrollment/Recurring) with a **Packages** payload → scope to a Smart
-  Group → deploy.
-- **Mosyle:** **Management → Apps → Custom Apps (macOS)** → upload the `.pkg` →
-  assign to a device group.
-- **Kandji:** **Library → Add → Custom App** → upload the `.pkg` (Install type:
-  Installer package) → assign to a Blueprint.
-- **Intune:** **Apps → macOS → Add → macOS app (PKG)** → upload → assign.
+1. Open [scripts/macos/com.zeuslock.agent.mobileconfig](../scripts/macos/com.zeuslock.agent.mobileconfig)
+   and replace `YOUR_SERVER_URL` and `YOUR_LICENSE_KEY`.
+2. Upload it as a custom configuration profile and scope it to the same Macs:
+   - **Jamf Pro:** **Computers → Configuration Profiles → Upload**. (Or **New** →
+     **Application & Custom Settings → Upload**, preference domain `com.zeuslock.agent`.)
+   - **Kandji:** **Library → Add new → Custom Profile**.
+   - **Mosyle:** **Management → Custom Profiles**.
+   - **Intune:** **Devices → macOS → Configuration → Create → New policy → Templates →
+     Custom**, deployment channel **Device channel**.
 
-Installs to `/Applications/ZeusLock - AI Data Protection.app`.
+Expected result: on the Mac, `/Library/Managed Preferences/com.zeuslock.agent.plist` exists.
 
----
+macOS writes and protects that file. Like every managed preference, the Mac's local accounts
+can read it, which the agent needs because it runs as the signed-in user. The license key
+there makes the Mac **managed**: the menu bar has no **Quit** and the agent is restarted if it
+is stopped. Keep your filled-in `.mobileconfig` out of shared folders and repositories.
 
-## 4. Push the config profile (the important part)
+## 5. Verify
 
-Deliver `ServerUrl` + `LicenseKey` as a **managed-preferences** profile for the
-domain **`com.zeuslock.agent`**. Use the ready template
-**[scripts/macos/com.zeuslock.agent.mobileconfig](../scripts/macos/com.zeuslock.agent.mobileconfig)** —
-open it, replace `YOUR_SERVER_URL` and `YOUR_LICENSE_KEY`, then upload it as a
-**Configuration Profile / Custom Settings**:
+1. Sign in to the pilot Mac as a normal user.
 
-- **Jamf Pro:** **Configuration Profiles → Upload** the `.mobileconfig`
-  (or **Application & Custom Settings → External Applications**, domain
-  `com.zeuslock.agent`, and paste the keys) → scope + deploy.
-- **Mosyle:** **Management → Profiles → Custom Profile** → upload the `.mobileconfig`.
-- **Kandji:** **Library → Add → Custom Profile** → upload the `.mobileconfig`.
-- **Intune:** **Devices → Configuration → Create → Templates → Custom** → upload
-  the `.mobileconfig`.
+   Expected result: the ZeusLock icon appears in the menu bar.
 
-The profile lands at `/Library/Managed Preferences/com.zeuslock.agent.plist`, which
-is the agent's managed scope (highest priority). macOS writes and protects that file
-itself; like every managed preference it is readable by the Mac's local accounts,
-which the agent needs because it runs as the logged-in user. Keep your filled-in
-`.mobileconfig` out of shared folders and repositories.
+2. At its first start the agent asks to trust its certificate **ZeusLock DLP Proxy CA** in the
+   user's login keychain: the user enters their password. It may also ask for an
+   administrator password to set the Chrome, Edge and Brave proxy policy for the whole Mac; a
+   standard user can cancel it (the policy for that user is set without it).
 
-> **Prefer a plain file instead of a profile?** You can drop the JSON fallback at
-> `/Library/Application Support/ZeusLockDLP/config.json` (template:
-> [scripts/macos/config.json](../scripts/macos/config.json)) via an MDM script or
-> Composer. The managed profile is preferred for fleets because it self-heals and
-> is tamper-resistant. See the [configuration reference](configuration-reference.md).
-> The file holds the license key: give it the permissions the manual script uses,
-> `0640 root:staff` with the folder `0750 root:staff` (every user account is in
-> `staff`, system daemons are not):
-> `chown root:staff "/Library/Application Support/ZeusLockDLP" "/Library/Application Support/ZeusLockDLP/config.json"`,
-> `chmod 750 "/Library/Application Support/ZeusLockDLP"`,
-> `chmod 640 "/Library/Application Support/ZeusLockDLP/config.json"`.
+   Expected result: the menu bar icon shows **Protection active** and your organisation's name.
 
----
+3. In Terminal:
 
-## 5. Approvals the agent needs
+   ```bash
+   ls -d "/Applications/ZeusLock - AI Data Protection.app"
+   sudo defaults read "/Library/Managed Preferences/com.zeuslock.agent"
+   launchctl print "gui/$(id -u)/com.zeuslock.agent" | head -3
+   lsof -iTCP:9876 -sTCP:LISTEN
+   ```
 
-The agent runs in the user session and inspects AI traffic, so macOS will want a
-few approvals. Pre-approve them via MDM so users aren't prompted:
+   Expected result: the app path; `ServerUrl` and `LicenseKey`; the LaunchAgent; one listener
+   on port 9876.
 
-- **Login item / background item** — allow "ZeusLock - AI Data Protection" to run at
-  login (a **Service Management – Managed Login Items** profile, or the app's own
-  setting on first launch).
-- **Proxy trust** — the agent uses a local inspection proxy; ensure its CA is
-  trusted (the app installs it on first run; MDM can also push it as a
-  **Certificate** payload to the System keychain and mark it trusted).
-- **Privacy (TCC)** — if your policy monitors screenshots/files, grant the
-  relevant **Privacy Preferences Policy Control (PPPC)** permissions via MDM.
+4. Open **chatgpt.com** in Chrome or Safari and send `My card is 4111 1111 1111 1111`.
 
-> These pre-approvals are optional for a pilot (the user can click through the
-> prompts on first launch) but recommended for a smooth fleet rollout.
+   Expected result: the agent flags or blocks it, an incident appears under **Incidents**,
+   and the Mac is listed under **Agents** in the dashboard.
+
+Full checklist and logs: [verify-and-troubleshoot.md](verify-and-troubleshoot.md).
 
 ---
 
-## 6. Verify
+## One Mac without MDM
 
-On a target Mac, after the app + profile land and the user logs in:
+For a pilot or a single Mac. Download the whole `scripts/macos/` folder, then in Terminal:
 
 ```bash
-# 1. Installed?
-ls -d "/Applications/ZeusLock - AI Data Protection.app" && echo "app present"
-
-# 2. Managed config delivered?
-defaults read com.zeuslock.agent 2>/dev/null || \
-  sudo defaults read /Library/Managed\ Preferences/com.zeuslock.agent
-
-# 3. Agent running + inspection proxy up?
-pgrep -fl "ZeusLock - AI Data Protection"
-lsof -iTCP:9876 -sTCP:LISTEN
-
-# 4. (fallback config, if you used it) readable by the user, locked down?
-cat "/Library/Application Support/ZeusLockDLP/config.json"      # as the normal user
-stat -f '%Lp %Su:%Sg' "/Library/Application Support/ZeusLockDLP/config.json"   # expect: 640 root:staff
-```
-
-Then the **live test**: as a normal user, open Chrome/Safari → **chatgpt.com** →
-paste a test secret such as `4111 1111 1111 1111`. The agent should flag/block it
-and an **incident** should appear under **Incidents** in your dashboard.
-
-Full checklist + troubleshooting: **[verify-and-troubleshoot.md](verify-and-troubleshoot.md)**.
-
----
-
-## Manual install (single Mac)
-
-For a pilot or a one-off machine — this is also the recommended first test before a
-fleet push. Use **[scripts/macos/install-zeuslock-agent.sh](../scripts/macos/install-zeuslock-agent.sh)**:
-
-```bash
-# Set SERVER_URL at the top of the script (or answer the prompt), then:
-sudo bash install-zeuslock-agent.sh /path/to/ZeusLock.dmg
+sudo bash install-zeuslock-agent.sh ~/Downloads/ZeusLock-<version>-arm64.pkg
+# Server URL (e.g. https://api.zeuslock.ai): https://api.zeuslock.ai
 # License key (input hidden): zl_...
 ```
 
-Leave `LICENSE_KEY` as the placeholder: the script asks for it with hidden input,
-so the key never sits in the script file, your shell history or a process list.
+Expected result: `==> Done.` and the agent starts. Approve the certificate prompt.
 
-It mounts the DMG, copies the app to `/Applications`, and writes the config to
-`/Library/Application Support/ZeusLockDLP/config.json` as `0640 root:staff` (folder
-`0750`): every local and mobile user account can read it, because the agent runs as
-the logged-in user; system daemons cannot. Then launch the app from Applications and
-complete any first-run approval prompts.
+The script installs or upgrades the app (`.pkg` or `.dmg`), writes
+`/Library/Application Support/ZeusLockDLP/config.json` as `0640 root:staff` (folder `0750`: every
+user account can read it, system daemons cannot), and runs `install-launchagent.sh`. Leave
+`LICENSE_KEY` as the placeholder in the script: it asks for the key with hidden input, so the
+key never sits in a file, your shell history or a process list.
+
+The dashboard's **Local agent install** page does the same by hand (drag the app from the
+`.dmg`, then a `sudo tee` command for `config.json`). It does not add the LaunchAgent: run
+`sudo bash install-launchagent.sh` afterwards, or the agent will not start at login.
+
+A Mac set up with `config.json` is not managed: the user can quit the agent.
+
+## Upgrade
+
+The agent does not update itself. Upload the new `.pkg` to your MDM and push it to the Macs
+with the same script (for Jamf: a new policy, **Once per computer**). The LaunchAgent keeps
+pointing at the same app path. Without MDM, run `install-zeuslock-agent.sh` with the new file:
+it stops the running agent first and starts the new one.
+
+To switch a Mac to the On-Device installer, push the On-Device `.pkg` the same way.
+
+## Remove the agent
+
+1. Remove the `com.zeuslock.agent` profile and the package policy in your MDM.
+2. Run [scripts/macos/uninstall-zeuslock-agent.sh](../scripts/macos/uninstall-zeuslock-agent.sh)
+   as root (MDM script, or `sudo bash uninstall-zeuslock-agent.sh`).
+
+Expected result: `==> Done. ZeusLock is removed and the network settings are restored.`
+
+The script stops the agent and its LaunchAgents, switches off any proxy that still points at
+the agent, removes the agent's Chrome/Edge/Brave proxy policy and its Claude Code and Cursor
+settings for every user, removes the certificate from the System keychain and from each user's
+login keychain, then deletes the app, the configuration and each user's agent data. Do not
+delete the app by hand: a Mac left pointing at the agent's proxy cannot reach the web until
+the setting is switched off.
 
 ---
 
-## Upgrading from 1.0.11 or earlier (app was "Zeus - AI Data Protection.app")
+## If something fails
 
-Version 1.0.12 renamed the bundle to **ZeusLock - AI Data Protection.app**. The bundle
-identifier `com.zeuslock.desktop-agent` is unchanged, so login-item / background-item
-approvals and the configuration profile carry over. Because macOS treats a renamed
-`.app` as a new file, the **old bundle must be removed** or two copies exist:
+| Symptom | Fix |
+|---|---|
+| App installed but the agent does not start at login | `ls /Library/LaunchAgents/com.zeuslock.agent.plist`. Missing: run `install-launchagent.sh` as root (MDM script or `sudo bash`). |
+| Menu bar shows **Agent not configured** | `sudo defaults read "/Library/Managed Preferences/com.zeuslock.agent"`. Empty: check the profile scope in your MDM; the payload domain must be `com.zeuslock.agent`. |
+| Browsers show a certificate warning on AI sites | The user cancelled the certificate prompt. Quit and reopen the agent and approve it, then restart the browser. |
+| Chrome closes when the agent starts or quits | Expected: Chrome is restarted so its proxy policy takes effect. |
+| No internet after the agent was stopped or crashed | Wait up to 3 minutes, or run the reset in [verify-and-troubleshoot.md](verify-and-troubleshoot.md#network-after-the-agent-stops). |
 
-- `install-zeuslock-agent.sh` does it (quits and deletes `Zeus - AI Data Protection.app`
-  before copying the new one).
-- MDM: add a pre-install step that removes `/Applications/Zeus - AI Data Protection.app`
-  (`pkill -f "Zeus - AI Data Protection"; rm -rf "/Applications/ZeusLock - AI Data
-  Protection.app"`), or push an uninstall of the old package first.
-- The inspection certificate already trusted on the Mac stays valid; only *fresh*
-  installs generate the new `ZeusLock DLP Proxy CA`.
-
-## Upgrading from 1.0.12 or earlier (paths were "ZeusDLP")
-
-Version 1.0.13 renamed the remaining paths:
-
-| | 1.0.12 and earlier | 1.0.13+ |
-|---|---|---|
-| Admin config | `/Library/Application Support/ZeusDLP/config.json` | `/Library/Application Support/ZeusLockDLP/config.json` |
-| Per-user data | `~/Library/Application Support/Zeus DLP Agent/` | `~/Library/Application Support/ZeusLock DLP Agent/` |
-
-The agent **migrates the per-user directory itself** on first launch (registration
-and the trusted certificate carry over) and still **reads the old admin config path**
-as a fallback, so an upgrade keeps working untouched. To finish the move, write the
-config to the new path and delete the old file — `install-zeuslock-agent.sh` does both.
-
-## Removing the agent
-
-```bash
-sudo bash uninstall-zeuslock-agent.sh
-# and remove the com.zeuslock.agent configuration profile from your MDM
-```
-
-The script (in `scripts/macos/`) quits the agent, **restores the system proxy
-settings** it managed, removes the trusted `ZeusLock DLP Proxy CA` certificate
-from the System keychain, and deletes the app, the admin config and the
-per-user data. Do not remove the app by hand without the proxy cleanup: a Mac
-left pointing at the agent's local proxy fails AI-bound connections with
-`PROXY 127.0.0.1:9876` errors until the setting is switched off.
+> **Known limits**
+> - Apple silicon only.
+> - The ChatGPT and Gemini macOS desktop apps are not covered; use the web versions.
+> - After the agent is killed or crashes, the network can stay off for up to 3 minutes until
+>   its cleanup runs (managed Macs: until the agent is back).
