@@ -144,8 +144,13 @@ same as above, with two differences:
 
 The configuration (Server URL + license key, same locations) and every script in this
 repository are the same. A normal agent in an On-Device organisation blocks AI tools and asks
-for the On-Device installer. On-Device is not available on a ZeusLock server installed in your
-own network.
+for the On-Device installer.
+
+**With a ZeusLock server in your own network (ZeusLock On-Premise 0.2.1 or later):** On-Device
+works the same way. Your server needs an On-Device licence and the model key file from ZeusLock
+(on-prem install guide, step 9); the installers come from your own dashboard's **On-Device**
+page, and the Server URL is your own API address. Each computer renews its model key from your
+server every 30 days.
 
 ---
 
