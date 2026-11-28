@@ -1,6 +1,6 @@
 # ZeusLock agent: deployment guide
 
-Everything an administrator needs to roll out the **ZeusLock - AI Data Protection** desktop
+Everything an administrator needs to roll out the **ZeusLock - AI Data Protection** endpoint
 agent to Windows, macOS and Linux computers, and to check that each one is protected.
 The guides are for agent **1.0.45 or later**. Follow them top to bottom; each step says what
 you should see.

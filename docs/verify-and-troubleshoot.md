@@ -110,16 +110,22 @@ of 50 MB.
 
 ## Network after the agent stops
 
-While it runs, the agent points the system proxy, the Chrome/Edge/Brave proxy policy, Claude
-Code and Cursor at itself (`127.0.0.1:9876`).
+While it runs, the agent points the system proxy, Claude Code and Cursor at itself
+(`127.0.0.1:9876`), and on macOS also the Chrome/Edge/Brave proxy policy. On Windows (agent
+1.0.48 or later) the browsers follow the Windows proxy: the agent writes no browser proxy policy,
+and it removes one an older agent left that points at it. Your organisation's own browser proxy
+policy is kept. When several Windows accounts are signed in at once and `127.0.0.1:9876` is
+taken by another account's agent, this account's agent uses a port of its own.
 
 - **Quit from the tray, sign-out, shutdown, uninstall:** everything is put back as it was
   (your company proxy, or none).
 - **Killed or crashed:** AI and web traffic fails until the agent runs again or the cleanup
   runs. That is deliberate: nothing goes out unchecked.
   - Windows: the watchdog restarts the agent in about 15–20 seconds; if every ZeusLock process
-    was ended, a cleanup task gives the network back within 3 minutes, or at the next sign-in.
-    During a restart the proxy stays on the agent.
+    was ended, a cleanup task gives the network back within about a minute (agent 1.0.48 or
+    later; within 3 minutes with older agents), or at the next sign-in. Each Windows account has
+    its own cleanup task (`ZeusLockProxyCleanup-<user SID>`), so this also works with several
+    accounts signed in at once. During a restart the proxy stays on the agent.
   - macOS and Linux: a cleanup job gives the network back within 3 minutes (Linux: 1 to 3
     minutes), or at the next login.
   - **Managed computers** (`ManagedUncleanStop=protect`, the default): the agent is started again
@@ -189,7 +195,7 @@ which the agent writes when its prompt is approved.
 | No internet after the agent stopped | Proxy still points at the stopped agent | See [Network after the agent stops](#network-after-the-agent-stops). |
 | AI tools blocked with "…has the standard ZeusLock agent. Install the ZeusLock On-Device version…" | The organisation uses ZeusLock On-Device | Deploy the On-Device installer from the dashboard **On-Device** page. |
 | AI tools blocked with "On-device protection needs to reach the ZeusLock server to renew its licence key" | On-Device computer offline for about 30 days | Connect it to the network; the key renews by itself. |
-| AI tools blocked with "On-device protection could not run on this PC" | The computer cannot run ZeusLock Ama | Check the PC on the dashboard **On-Device** page (**Too weak**, **Model problem**). |
+| AI tools blocked with "On-device protection could not run on this PC" | The computer cannot run ZeusLock Ama | Check the PC on the dashboard **On-Device** page (**Too weak**, **Model problem**). Agents up to 1.0.47 could class a capable PC **Too weak** (the speed test also timed the model's first start, and some 8 GB PCs report a little less memory). Update to 1.0.48 or later and restart the agent: a PC classed **Too weak** is tested again at every start. |
 | Agent shows the wrong organisation | An older registration is cached | Quit the agent, delete `config.json` in its data folder ([Logs](#logs) table), open it again. |
 
 ---
