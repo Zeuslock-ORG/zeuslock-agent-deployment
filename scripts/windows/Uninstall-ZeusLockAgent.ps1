@@ -10,11 +10,13 @@
     2. Stops the agent and its watchdog.
     3. In every signed-in user's session, runs the agent's own cleanup
        ("<agent exe>" --cleanup --uninstall): it gives back the Windows proxy (the
-       company proxy that was there before, or none), the Chrome/Edge/Brave proxy
-       policy, and the Claude Code and Cursor settings.
+       company proxy that was there before, or none), a Chrome/Edge/Brave proxy
+       policy left by an agent up to 1.0.47, and the Claude Code and Cursor settings.
     4. Uninstalls every ZeusLock install (MSI and Setup .exe) with its own uninstaller.
     5. Removes the agent's certificate "ZeusLock DLP Proxy CA" from the machine store
-       (and from your own user store when you run it by hand), the start-up values and
+       (and from your own user store when you run it by hand), the agent's clean-up
+       tasks (ZeusLockProxyCleanup-<user SID>, one per Windows account since agent
+       1.0.48, and ZeusLockProxyCleanup from older agents), the start-up values and
        the JSON configuration.
 
     Users who are not signed in get step 3 at their next sign-in: the agent left a
@@ -36,7 +38,9 @@ $ExePaths = @(
     "C:\Program Files\ZeusLock\ZeusLock - AI Data Protection\$ExeName"      # Setup .exe
 )
 $CaNames = @("ZeusLock DLP Proxy CA", "Zeus DLP Proxy CA")
-$CleanupTask = "ZeusLockProxyCleanup"
+# The agent's safety-net clean-up task: one per Windows account since agent 1.0.48
+# ("ZeusLockProxyCleanup-<user SID>"), one shared "ZeusLockProxyCleanup" before.
+$CleanupTaskName = "ZeusLockProxyCleanup"
 $UninstallRoots = @(
     "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
     "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
@@ -96,10 +100,19 @@ function Invoke-InUserSession([string]$User, [string]$Execute, [string]$Argument
     }
 }
 
-# The agent and its watchdog are the same executable. The per-user cleanup task is
-# paused first: on a managed PC it would start the agent again.
+# Every clean-up task of the agent, for every Windows account: exactly
+# "ZeusLockProxyCleanup" (agents up to 1.0.47) or "ZeusLockProxyCleanup-*" (1.0.48 and later).
+function Get-ZeusLockCleanupTasks {
+    return @(Get-ScheduledTask -TaskName "$CleanupTaskName*" -ErrorAction SilentlyContinue |
+        Where-Object { $_.TaskName -eq $CleanupTaskName -or $_.TaskName -like "$CleanupTaskName-*" })
+}
+
+# The agent and its watchdog are the same executable. The per-user cleanup tasks are
+# paused first: on a managed PC they would start the agent again.
 function Stop-ZeusLockAgent {
-    & schtasks.exe /Change /TN $CleanupTask /DISABLE 2>$null | Out-Null
+    foreach ($task in @(Get-ZeusLockCleanupTasks)) {
+        Disable-ScheduledTask -TaskName $task.TaskName -TaskPath $task.TaskPath -ErrorAction SilentlyContinue | Out-Null
+    }
     foreach ($round in 1..3) {
         $running = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -like "Zeus*AI Data Protection*" })
         if ($running.Count -eq 0) { return }
@@ -168,7 +181,12 @@ function Invoke-Main {
     }
 
     # 5. What the uninstallers may leave.
-    & schtasks.exe /Delete /F /TN $CleanupTask 2>$null | Out-Null
+    foreach ($task in @(Get-ZeusLockCleanupTasks)) {
+        Unregister-ScheduledTask -TaskName $task.TaskName -TaskPath $task.TaskPath -Confirm:$false -ErrorAction SilentlyContinue
+        if (Get-ScheduledTask -TaskName $task.TaskName -TaskPath $task.TaskPath -ErrorAction SilentlyContinue) {
+            Log "WARNING: could not remove the scheduled task $($task.TaskName); delete it by hand"
+        } else { Log "Scheduled task $($task.TaskName) removed" }
+    }
     & schtasks.exe /Delete /F /TN "ZeusLockDLPAgent" 2>$null | Out-Null
     foreach ($runValue in @("ZeusLock Agent", "ZeusLock DLP Agent", "Zeus DLP Agent")) {
         Remove-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" -Name $runValue -Force -ErrorAction SilentlyContinue

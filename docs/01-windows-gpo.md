@@ -1,8 +1,8 @@
 # Windows: deploy with Active Directory Group Policy
 
 Deploy the ZeusLock agent to every domain-joined Windows PC from your domain controller and
-bind it to your organisation, all through Group Policy. About 20 minutes of setup; PCs pick it
-up at their next restart. For agent 1.0.45 or later.
+bind it to your organisation, all through Group Policy. Setup is fast; PCs pick it up at
+their next restart. For agent 1.0.45 or later.
 
 **Steps:**
 1. [Requirements](#1-requirements)
@@ -275,8 +275,10 @@ On-Device installer, deploy the On-Device MSI the same way.
 Expected result: `Get-Package -Name "ZeusLock*"` returns nothing and web browsing works.
 
 The script removes the configuration, stops the agent, gives each signed-in user's network back
-(Windows proxy, browser proxy policy, Claude Code and Cursor settings), uninstalls every
-ZeusLock install, and removes the certificate from the machine store. Users who were not signed
+(Windows proxy, Claude Code and Cursor settings, and a browser proxy policy left by an agent up
+to 1.0.47), uninstalls every ZeusLock install, removes the agent's clean-up tasks of every
+Windows account (`ZeusLockProxyCleanup-<user SID>`, and `ZeusLockProxyCleanup` from agents up to
+1.0.47), and removes the certificate from the machine store. Users who were not signed
 in get their network settings back automatically at their next sign-in. Log:
 `C:\Windows\Temp\ZeusLock-Uninstall.log`.
 
@@ -299,7 +301,10 @@ in get their network settings back automatically at their next sign-in. Log:
 | Tray shows **Agent not configured** | `reg query "HKLM\SOFTWARE\Policies\ZeusLock"` on the PC. Empty: run `gpupdate /force`; Method A: check the PC can read the key file share. |
 | Agent does not start at sign-in | `reg query HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run` must show `ZeusLock Agent` (MSI) or `ZeusLock DLP Agent` (Setup .exe). Task Manager → **Startup apps** must show it **Enabled**. |
 | Browsers show a certificate warning on AI sites | The user refused the certificate prompt. Quit the agent from the tray (or restart the PC) and approve the prompt at the next start. |
-| No internet after the agent was stopped or crashed | Wait up to 3 minutes, or run the reset in [verify-and-troubleshoot.md](verify-and-troubleshoot.md#network-after-the-agent-stops). |
+| No internet after the agent was stopped or crashed | Wait about a minute (agent 1.0.48 or later; up to 3 minutes with older agents), or run the reset in [verify-and-troubleshoot.md](verify-and-troubleshoot.md#network-after-the-agent-stops). |
+| Several users signed in at once (fast user switching, Remote Desktop): the second one has no protection, or stays offline after the agent stops | Agents up to 1.0.47 shared one clean-up task and one proxy port between accounts. Update to 1.0.48 or later: each Windows account gets its own clean-up task (`ZeusLockProxyCleanup-<user SID>`) and, when `127.0.0.1:9876` is taken by another account, its own proxy port. |
+| The agent starts again by itself a few seconds after **Quit** in the tray | Fixed in agent 1.0.48. Update the agent. |
+| Chrome or Edge still fails after the agent stopped, although the Windows proxy is off | A browser proxy policy written by an agent up to 1.0.47 that ran elevated. Open `chrome://policy` (or `edge://policy`): if `ProxySettings` names `127.0.0.1:9876`, an administrator removes it, for example `reg delete "HKCU\Software\Policies\Google\Chrome" /v ProxySettings /f` (also `Microsoft\Edge` and `BraveSoftware\Brave`, and the same under `HKLM`), then restarts the browser. Agent 1.0.48 or later no longer writes it and removes it at each start and stop where the user may change it; a value written by an elevated run needs an administrator. |
 
 > **Known limits**
 > - x64 only.
